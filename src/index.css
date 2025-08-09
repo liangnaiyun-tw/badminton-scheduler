@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 列印樣式（A4 橫向 + 分頁 + 只印表格） */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  button, input, select, .no-print { display: none !important; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #bbb; padding: 6px; }
+  thead th { background: #eee !important; }
+  tbody tr:nth-child(7n) { page-break-after: always; }
+}

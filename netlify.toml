@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# 如果未來加入前端路由，可啟用 SPA 導向：
+#[[redirects]]
+#  from = "/*"
+#  to = "/index.html"
+#  status = 200
