@@ -1,13 +1,46 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
 
+/* =========================
+ *  基本型別
+ * ========================= */
 const genders = ["M", "F", "Other"] as const;
 type Gender = typeof genders[number];
+
+/* ---- Level / Skill (1–8) 與說明 ---- */
+export type Level = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type Skill = Level; // skill 也走 1–8
+
+const clampLevel = (n: number): Level => (n < 1 ? 1 : n > 8 ? 8 : (n as Level));
+const levelLabel = (lv: Level) => `Lv.${lv}`;
+
+/** 參考台灣羽球推廣協會分級（精簡版 1–8） */
+const LEVEL_INFO: Record<Level, { title: string; desc: string }> = {
+  1: { title: "新手階", desc: "剛接觸規則與禮儀，基本發球/回球成功率較低。" },
+  2: { title: "新手階", desc: "能在中場以平抽/高球往返約10拍，發球成功率約半數。" },
+  3: { title: "新手階", desc: "定點長球可到半場～2/3場地，發球成功率提升（約8成）。" },
+  4: { title: "初階", desc: "握拍與步伐較正確；長球男可至後場、女可到中後場；可做簡單吊/挑/殺。" },
+  5: { title: "初階", desc: "攻防較穩，可運用吊、挑、放、抽等技術，準確度與穩定度提升。" },
+  6: { title: "初中階", desc: "步伐順暢；能後場進攻與網前變化；偶有非受迫失誤；一般球團中下段位。" },
+  7: { title: "初中階", desc: "殺/切/勾能定點或變向；攻守有概念，準確率約7成；具初步防守能力。" },
+  8: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+};
+
+/** 顏色分帶（依你圖卡：1–3 綠、4–6 粉、7–8 黃） */
+const levelBand = (lv: Level) => {
+  const title = LEVEL_INFO[lv].title;
+  let color = "#22c55e";                 // 1–3 綠
+  if (lv >= 4 && lv <= 6) color = "#ec4899"; // 4–6 粉
+  if (lv >= 7) color = "#f59e0b"; // 7–8 黃
+  return { title, color };
+};
 
 type Player = {
   id: string;
   name: string;
   gender: Gender;
-  skill: number; // 1..5
+  level?: Level;  // 允許舊資料缺值，啟動時會校正
+  skill?: Skill;  // 允許舊資料缺值，啟動時會校正（= level）
   selected: boolean;
 };
 
@@ -46,6 +79,9 @@ type SchedulerState = {
   stats: Map<string, PerPlayerStats>;
 };
 
+/* =========================
+ *  Utils
+ * ========================= */
 function timeAt(date: string, h: number, m: number) {
   const d = new Date(date);
   d.setHours(h, m, 0, 0);
@@ -63,18 +99,21 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+/* =========================
+ *  配對/選人
+ * ========================= */
 function makeTeams(players: Player[], preferMixed: boolean) {
   const pool = [...players];
   let best: [Player[], Player[]] | null = null;
   let bestScore = Infinity;
   const pairs: number[][] = [
-    [0, 1],[0, 2],[0, 3],[1, 2],[1, 3],[2, 3],
+    [0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3],
   ];
   for (const p of pairs) {
     const teamA = [pool[p[0]], pool[p[1]]];
     const teamB = pool.filter((_, i) => !p.includes(i));
-    const sumA = teamA.reduce((s, x) => s + x.skill, 0);
-    const sumB = teamB.reduce((s, x) => s + x.skill, 0);
+    const sumA = teamA.reduce((s, x) => s + (x.skill ?? 1), 0);
+    const sumB = teamB.reduce((s, x) => s + (x.skill ?? 1), 0);
     const skillDiff = Math.abs(sumA - sumB);
     let mixPenalty = 0;
     if (preferMixed) {
@@ -141,7 +180,7 @@ function pickPlayersForCourt(
   const chosen = chooseBestFour(candidates, (group) => {
     const [t1, t2] = makeTeams(group, state.settings.preferMixed);
     const diff =
-      t1.reduce((s, p) => s + p.skill, 0) - t2.reduce((s, p) => s + p.skill, 0);
+      t1.reduce((s, p) => s + (p.skill ?? 1), 0) - t2.reduce((s, p) => s + (p.skill ?? 1), 0);
     return Math.abs(diff);
   });
   return chosen;
@@ -225,12 +264,115 @@ function generateSchedule(players: Player[], settings: Settings) {
   return { matches, usedShort: shouldShort };
 }
 
+/* =========================
+ *  UI：Level 元件
+ * ========================= */
+function InfoPopover({ level }: { level?: Level }) {
+  const lv = (level ?? 1) as Level; // fallback
+  const info = LEVEL_INFO[lv];
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`查看 ${levelLabel(lv)} 說明`}
+        onClick={() => setOpen((o) => !o)}
+        onBlur={() => setOpen(false)}
+        className={`ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full
+              border text-sky-600 border-sky-300
+              hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-300
+              ${open ? "bg-sky-50" : ""}`}
+        title={`${levelLabel(lv)}｜${info.title}`}
+      >
+        <InformationCircleIcon className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          className="absolute z-30 left-1/2 -translate-x-1/2 mt-2 w-72 rounded-xl border bg-white p-3 shadow"
+        >
+          <div className="text-sm font-medium">
+            {levelLabel(lv)}｜{info.title}
+          </div>
+          <div className="mt-1 text-xs text-slate-600 leading-relaxed">
+            {info.desc}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LevelPills({
+  value, onChange, disabled,
+}: { value?: Level; onChange: (lv: Level) => void; disabled?: boolean }) {
+  const v = (value ?? 1) as Level; // fallback
+  return (
+    <div className="flex items-center gap-2">
+      <div role="radiogroup" aria-label="Select player level" className="flex flex-wrap gap-1.5">
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+          const active = v === n;
+          const { color } = levelBand(n as Level);
+          return (
+            <button
+              key={n}
+              role="radio"
+              aria-checked={active}
+              onClick={() => !disabled && onChange(n as Level)}
+              disabled={disabled}
+              className="px-2.5 py-1 rounded-full border text-xs"
+              style={{
+                background: active ? `${color}14` : "white",
+                borderColor: active ? `${color}55` : "#e5e7eb",
+                color: active ? color : "#111827",
+              }}
+              title={`${levelLabel(n as Level)}｜${LEVEL_INFO[n as Level].title}`}
+            >
+              {levelLabel(n as Level)}
+            </button>
+          );
+        })}
+      </div>
+      <InfoPopover level={v} />
+    </div>
+  );
+}
+
+function LevelSelect({
+  value, onChange, id, disabled,
+}: { value?: Level; onChange: (lv: Level) => void; id?: string; disabled?: boolean }) {
+  const v = (value ?? 1) as Level; // fallback
+  return (
+    <div className="flex items-start gap-2">
+      <select
+        id={id}
+        value={v}
+        disabled={disabled}
+        onChange={(e) => onChange(clampLevel(Number(e.target.value)))}
+        className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-black/10"
+        aria-label="Select player level"
+        title={`${levelLabel(v)}｜${LEVEL_INFO[v].title}`}
+      >
+        {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+          <option key={n} value={n}>{`Lv.${n}`}</option>
+        ))}
+      </select>
+      <InfoPopover level={v} />
+    </div>
+  );
+}
+
+/* =========================
+ *  APP
+ * ========================= */
 export default function App() {
   const [players, setPlayers] = useState<Player[]>(() => samplePlayers());
   const [settings, setSettings] = useState<Settings>(() => ({
-    courts: 2,
+    courts: 1,
     slotMinsLong: 12,
-    slotMinsShort: 9,
+    slotMinsShort: 8,
     shortMatchThreshold: 8,
     preferMixed: true,
     dateISO: new Date().toISOString().slice(0, 10),
@@ -239,6 +381,16 @@ export default function App() {
     endHH: 12,
     endMM: 0,
   }));
+
+  // 一次性校正：把舊資料的 level/skill 填好（skill = level）
+  useEffect(() => {
+    setPlayers(prev =>
+      prev.map(p => {
+        const lv = clampLevel((p.level ?? (p.skill as number) ?? 1) as number);
+        return { ...p, level: lv, skill: lv };
+      })
+    );
+  }, []);
 
   const selectedCount = players.filter((p) => p.selected).length;
   const { matches, usedShort } = useMemo(
@@ -252,8 +404,8 @@ export default function App() {
         <section className="lg:col-span-1">
           <h1 className="text-2xl font-bold mb-3">🏸 羽球賽程排程器</h1>
           <p className="text-sm text-slate-600 mb-4">
-            時間：10:10–12:00（可調）。每場需要 4 位球員 + 2 位線審 + 1 位主審。
-            避免同一位球員連打 3 場，盡量平衡實力並可偏好混雙。
+            時間可調；每場 4 位球員 + 2 位線審 + 1 位主審。
+            避免同一位球員連打 3 場，並盡量平衡實力（依 1–8 級）。
           </p>
 
           <div className="bg-white rounded-2xl shadow p-4 mb-4">
@@ -290,7 +442,7 @@ export default function App() {
                 onChange={(v) => setSettings({ ...settings, shortMatchThreshold: v })} />
               <div className="flex items-center gap-2">
                 <input id="mixed" type="checkbox" checked={settings.preferMixed}
-                  onChange={(e) => setSettings({ ...settings, preferMixed: e.target.checked })}/>
+                  onChange={(e) => setSettings({ ...settings, preferMixed: e.target.checked })} />
                 <label htmlFor="mixed" className="text-sm">偏好混雙</label>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -307,11 +459,11 @@ export default function App() {
               </div>
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              目前賽制：{usedShort ? "短局（15分，較快輪轉）" : "長局（21分，較長時間）"}
+              目前賽制：{usedShort ? "短局（較快輪轉）" : "長局（較長時間）"}
             </p>
           </div>
 
-          <div className="bg白 rounded-2xl shadow p-4">
+          <div className="bg-white rounded-2xl shadow p-4">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold mb-3">自動產生賽程</h2>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -340,6 +492,9 @@ export default function App() {
   );
 }
 
+/* =========================
+ *  小元件
+ * ========================= */
 function NumberField({
   label, value, min, max, onChange,
 }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; }) {
@@ -371,8 +526,8 @@ function PlayerEditor({
           <tr>
             <th className="text-left p-2">選</th>
             <th className="text-left p-2">姓名</th>
-            <th className="text左 p-2">性別</th>
-            <th className="text-left p-2">實力(1-5)</th>
+            <th className="text-left p-2">性別</th>
+            <th className="text-left p-2">等級(1-8)</th>
             <th className="text-left p-2"></th>
           </tr>
         </thead>
@@ -405,15 +560,9 @@ function PlayerEditor({
                 </select>
               </td>
               <td className="p-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={p.skill}
-                  onChange={(e) =>
-                    update(p.id, { skill: Math.max(1, Math.min(5, Number(e.target.value))) })
-                  }
-                  className="px-2 py-1 rounded border border-slate-200 w-16"
+                <LevelPills
+                  value={(p.level ?? (p.skill as Level) ?? 1) as Level} // 容錯
+                  onChange={(lv) => update(p.id, { level: lv, skill: lv /* skill=level */ })}
                 />
               </td>
               <td className="p-2 text-right">
@@ -432,7 +581,7 @@ function PlayerEditor({
 function AddPlayer({ onAdd }: { onAdd: (p: Player) => void }) {
   const [name, setName] = useState("");
   const [gender, setGender] = useState<Gender>("M");
-  const [skill, setSkill] = useState(3);
+  const [level, setLevel] = useState<Level>(3);
   return (
     <div className="bg-white rounded-2xl shadow p-4">
       <h3 className="font-semibold mb-3">新增球員</h3>
@@ -440,27 +589,32 @@ function AddPlayer({ onAdd }: { onAdd: (p: Player) => void }) {
         <label className="text-sm">
           <div className="text-slate-600">姓名</div>
           <input value={name} onChange={(e) => setName(e.target.value)}
-                 className="px-3 py-2 rounded-xl border border-slate-200" />
+            className="px-3 py-2 rounded-xl border border-slate-200" />
         </label>
         <label className="text-sm">
           <div className="text-slate-600">性別</div>
           <select value={gender} onChange={(e) => setGender(e.target.value as Gender)}
-                  className="px-3 py-2 rounded-xl border border-slate-200">
+            className="px-3 py-2 rounded-xl border border-slate-200">
             {genders.map((g) => (<option key={g} value={g}>{g}</option>))}
           </select>
         </label>
         <label className="text-sm">
-          <div className="text-slate-600">實力(1-5)</div>
-          <input type="number" min={1} max={5} value={skill}
-                 onChange={(e) => setSkill(Number(e.target.value))}
-                 className="px-3 py-2 rounded-xl border border-slate-200 w-24" />
+          <div className="text-slate-600 mb-1">等級(1-8)</div>
+          <LevelPills value={level} onChange={setLevel} />
         </label>
         <button
           className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-700"
           onClick={() => {
             if (!name.trim()) return;
-            onAdd({ id: uid(), name: name.trim(), gender, skill, selected: true });
-            setName(""); setGender("M"); setSkill(3);
+            onAdd({
+              id: uid(),
+              name: name.trim(),
+              gender,
+              level,
+              skill: level, // 同步
+              selected: true,
+            });
+            setName(""); setGender("M"); setLevel(3);
           }}
         >加入</button>
       </div>
@@ -514,7 +668,7 @@ function ScheduleTable({ matches, courts }: { matches: MatchAssignment[]; courts
 
 function MatchCard({ m }: { m: MatchAssignment }) {
   const teamLine = (t: Player[]) =>
-    `${t[0].name}（${t[0].gender}/${t[0].skill}） / ${t[1].name}（${t[1].gender}/${t[1].skill}）`;
+    `${t[0].name}（${t[0].gender}/${levelLabel((t[0].level ?? 1) as Level)}） / ${t[1].name}（${t[1].gender}/${levelLabel((t[1].level ?? 1) as Level)}）`;
   return (
     <div className="rounded-xl border border-slate-200 p-2 print:p-1">
       <div className="text-xs text-slate-500 mb-1">
@@ -529,38 +683,22 @@ function MatchCard({ m }: { m: MatchAssignment }) {
   );
 }
 
-function samplePlayers(): Player[] {
-  const base: { name: string; gender: Gender; skill: number }[] = [
-    { name: "阿豪", gender: "M", skill: 4 },
-    { name: "小美", gender: "F", skill: 3 },
-    { name: "建志", gender: "M", skill: 3 },
-    { name: "佳怡", gender: "F", skill: 2 },
-    { name: "Eric", gender: "M", skill: 5 },
-    { name: "Iris", gender: "F", skill: 4 },
-    { name: "Tom", gender: "M", skill: 2 },
-    { name: "Nina", gender: "F", skill: 3 },
-    { name: "Allen", gender: "M", skill: 3 },
-    { name: "Ruby", gender: "F", skill: 2 },
-  ];
-  return base.map((b) => ({ id: uid(), selected: true, ...b }));
-}
-
 /* 匯出 CSV（Excel 可直接開啟） */
 function exportScheduleCSV(matches: MatchAssignment[]) {
   if (!matches?.length) return;
 
   const header = [
-    "時間","場地",
-    "A1","A1(性別/實力)","A2","A2(性別/實力)",
-    "B1","B1(性別/實力)","B2","B2(性別/實力)",
-    "主審","線審1","線審2"
+    "時間", "場地",
+    "A1", "A1(性別/Lv)", "A2", "A2(性別/Lv)",
+    "B1", "B1(性別/Lv)", "B2", "B2(性別/Lv)",
+    "主審", "線審1", "線審2"
   ];
 
   const rows = [...matches]
     .sort((a, b) => a.slotIndex - b.slotIndex || a.court - b.court)
     .map((m) => {
       const tA = m.teams[0], tB = m.teams[1];
-      const fmtP = (p: Player) => `${p.gender}/${p.skill}`;
+      const fmtP = (p: Player) => `${p.gender}/${levelLabel(((p.level ?? 1) as Level))}`;
       const time = `${formatTime(m.start)}-${formatTime(m.end)}`;
       return [
         time, `第${m.court}場地`,
@@ -588,7 +726,25 @@ function exportScheduleCSV(matches: MatchAssignment[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `badminton-schedule-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `badminton-schedule-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/* 範例資料 */
+function samplePlayers(): Player[] {
+  const base: Array<{ name: string; gender: Gender; level: Level }> = [
+    { name: "阿豪", gender: "M", level: 6 },
+    { name: "小美", gender: "F", level: 4 },
+    { name: "建志", gender: "M", level: 5 },
+    { name: "佳怡", gender: "F", level: 3 },
+    { name: "Eric", gender: "M", level: 8 },
+    { name: "Iris", gender: "F", level: 7 },
+    { name: "Tom", gender: "M", level: 2 },
+    { name: "Nina", gender: "F", level: 3 },
+    { name: "Allen", gender: "M", level: 4 },
+    { name: "Ruby", gender: "F", level: 2 },
+  ];
+  // 一開始就填好 skill = level；若未來從舊資料載入，useEffect 會再校正一次
+  return base.map((b) => ({ id: uid(), selected: true, ...b, skill: b.level }));
 }
