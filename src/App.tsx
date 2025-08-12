@@ -753,7 +753,8 @@ function samplePlayers(): Player[] {
     { name: "宇", gender: "M", level: 5 },
     { name: "哲", gender: "M", level: 6 },
     { name: "懋", gender: "M", level: 8 },
-    { name: "勛", gender: "M", level: 8 }
+    { name: "勛", gender: "M", level: 8 },
+    { name: "湘", gender: "F", level: 3 }
   ];
   return base.map((b) => ({ id: uid(), name: b.name, selected: true, skill: b.level, level: b.level, gender: b.gender }));
 }
