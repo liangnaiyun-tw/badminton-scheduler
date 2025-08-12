@@ -123,7 +123,7 @@ const key2 = (a: string, b: string) => sortPair(a, b).join("|");
 export function generateSchedule(playersAll: Player[], settings: Settings): { matches: MatchAssignment[]; usedShort: boolean } {
   const players = playersAll.filter(p => p.selected);
   const courts = Math.max(1, settings.courts);
-  const maxMate = settings.maxSameTeammateTogether ?? 2; // 硬限制：同隊夥伴最多 2 次
+  const maxMate = settings.maxSameTeammateTogether ?? 1; // 硬限制：同隊夥伴最多 1 次
   const maxOpp  = settings.maxSameOpponent ?? 2;         // 硬限制：個人對個人最多 2 次
   const maxConsec = settings.maxConsecutivePlays ?? 2;
 
