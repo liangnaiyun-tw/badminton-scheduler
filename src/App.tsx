@@ -134,7 +134,7 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
   // 時段
   const start = timeAt(settings.dateISO, settings.startHH, settings.startMM);
   const end = timeAt(settings.dateISO, settings.endHH, settings.endMM);
-  const needShort = players.length > courts * (settings.shortMatchThreshold ?? 8);
+  const needShort = players.length / courts > (settings.shortMatchThreshold ?? 7);
   const slotLen = needShort ? settings.slotMinsShort : settings.slotMinsLong;
 
   const slots: Array<{ idx: number; start: Date; end: Date }> = [];
@@ -411,14 +411,14 @@ export default function App() {
     courts: 1,
     slotMinsLong: 12,
     slotMinsShort: 8,
-    shortMatchThreshold: 8,
+    shortMatchThreshold: 7,
     preferMixed: true,
     dateISO: new Date().toISOString().slice(0, 10),
     startHH: 10,
     startMM: 10,
     endHH: 12,
     endMM: 0,
-    maxSameTeammateTogether: 2,
+    maxSameTeammateTogether: 1,
     maxSameOpponent: 2,
     maxConsecutivePlays: 2,
     strongFemaleAsMale: true,
@@ -494,7 +494,7 @@ export default function App() {
               <NumberField label="球場數" value={settings.courts} min={1} max={6} onChange={(v) => setSettings({ ...settings, courts: v })} />
               <NumberField label="長局分鐘（21分）" value={settings.slotMinsLong} min={8} max={20} onChange={(v) => setSettings({ ...settings, slotMinsLong: v })} />
               <NumberField label="短局分鐘（15分）" value={settings.slotMinsShort} min={6} max={15} onChange={(v) => setSettings({ ...settings, slotMinsShort: v })} />
-              <NumberField label="短局門檻（players > courts×此值）" value={settings.shortMatchThreshold} min={6} max={16} onChange={(v) => setSettings({ ...settings, shortMatchThreshold: v })} />
+              <NumberField label="短局門檻（players > 球場數×此值）" value={settings.shortMatchThreshold} min={6} max={16} onChange={(v) => setSettings({ ...settings, shortMatchThreshold: v })} />
               <div className="flex items-center gap-2">
                 <input id="mixed" type="checkbox" checked={settings.preferMixed} onChange={(e) => setSettings({ ...settings, preferMixed: e.target.checked })} />
                 <label htmlFor="mixed" className="text-sm">偏好混雙</label>
