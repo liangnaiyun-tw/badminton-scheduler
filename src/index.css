@@ -12,3 +12,82 @@
   thead th { background: #eee !important; }
   tbody tr:nth-child(7n) { page-break-after: always; }
 }
+
+
+:root {
+  --bg: #f9fafb;
+  --card: #ffffff;
+  --border: #d1d5db;
+  --text: #111827;
+  --muted: #6b7280;
+  --primary: #22c55e;        /* 草綠 */
+  --primary-strong: #16a34a; /* 深綠 */
+  --accent: #eab308;         /* 亮黃 */
+  --ring: rgba(34,197,94,.35);
+}
+
+/* ---- 全域 ---- */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: ui-sans-serif, system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---- Header ---- */
+.app-header {
+  padding: 40px 0 20px;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  color: white;
+  text-align: center;
+}
+.app-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+.app-subtitle {
+  margin: 6px 0 16px;
+  color: rgba(255,255,255,.9);
+  font-size: 14px;
+}
+
+/* ---- Tabs ---- */
+.tabs {
+  display: inline-flex;
+  gap: 12px;
+  background: rgba(255,255,255,.15);
+  border-radius: 999px;
+  padding: 6px;
+}
+.tab {
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: white;
+  text-decoration: none;
+  font-size: 14px;
+  transition: all .2s ease;
+}
+.tab:hover {
+  background: rgba(255,255,255,.25);
+}
+.tab.is-active {
+  background: white;
+  color: var(--primary-strong);
+  font-weight: 600;
+}
+
+
+/* ---- Footer ---- */
+.app-footer {
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 0 40px;
+}
+.dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--muted);
+}
