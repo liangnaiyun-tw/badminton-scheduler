@@ -87,7 +87,652 @@ function GenderTag({ p, large = false }: { p: Player; large?: boolean }) {
 
 // ========== 主元件 ==========
 export default function MatchesPage() {
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches, setMatches] = useState<Match[]>([
+    {
+      "id": "場次一",
+      "court": "場次一",
+      "team1": {
+        "a": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        },
+        "b": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        },
+        "b": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        }
+      },
+      "referee": {
+        "id": "慶",
+        "name": "慶",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "哲",
+        "name": "哲",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "懋",
+        "name": "懋",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次二",
+      "court": "場次二",
+      "team1": {
+        "a": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        },
+        "b": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        },
+        "b": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "源",
+        "name": "源",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "宇",
+        "name": "宇",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "勛",
+        "name": "勛",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次三",
+      "court": "場次三",
+      "team1": {
+        "a": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        },
+        "b": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        },
+        "b": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "梁",
+        "name": "梁",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "湘",
+        "name": "湘",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "宇",
+        "name": "宇",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次四",
+      "court": "場次四",
+      "team1": {
+        "a": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        },
+        "b": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        },
+        "b": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        }
+      },
+      "referee": {
+        "id": "哲",
+        "name": "哲",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "懋",
+        "name": "懋",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "勛",
+        "name": "勛",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次五",
+      "court": "場次五",
+      "team1": {
+        "a": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        },
+        "b": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        },
+        "b": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "源",
+        "name": "源",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "慶",
+        "name": "慶",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "湘",
+        "name": "湘",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次六",
+      "court": "場次六",
+      "team1": {
+        "a": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        },
+        "b": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        },
+        "b": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "慶",
+        "name": "慶",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "懋",
+        "name": "懋",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "勛",
+        "name": "勛",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次七",
+      "court": "場次七",
+      "team1": {
+        "a": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        },
+        "b": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        },
+        "b": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        }
+      },
+      "referee": {
+        "id": "梁",
+        "name": "梁",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "源",
+        "name": "源",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "哲",
+        "name": "哲",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次八",
+      "court": "場次八",
+      "team1": {
+        "a": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        },
+        "b": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        },
+        "b": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "哲",
+        "name": "哲",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "湘",
+        "name": "湘",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "慶",
+        "name": "慶",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次九",
+      "court": "場次九",
+      "team1": {
+        "a": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        },
+        "b": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        },
+        "b": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        }
+      },
+      "referee": {
+        "id": "哲",
+        "name": "哲",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "懋",
+        "name": "懋",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "勛",
+        "name": "勛",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次十",
+      "court": "場次十",
+      "team1": {
+        "a": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        },
+        "b": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        },
+        "b": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "梁",
+        "name": "梁",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "源",
+        "name": "源",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "宇",
+        "name": "宇",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次十一",
+      "court": "場次十一",
+      "team1": {
+        "a": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        },
+        "b": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        },
+        "b": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "梁",
+        "name": "梁",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "湘",
+        "name": "湘",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "慶",
+        "name": "慶",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次十二",
+      "court": "場次十二",
+      "team1": {
+        "a": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        },
+        "b": {
+          "id": "梁",
+          "name": "梁",
+          "gender": "F"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        },
+        "b": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "源",
+        "name": "源",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "哲",
+        "name": "哲",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "勛",
+        "name": "勛",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次十三",
+      "court": "場次十三",
+      "team1": {
+        "a": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        },
+        "b": {
+          "id": "源",
+          "name": "源",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "懋",
+          "name": "懋",
+          "gender": "M"
+        },
+        "b": {
+          "id": "勛",
+          "name": "勛",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "梁",
+        "name": "梁",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "宇",
+        "name": "宇",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "慶",
+        "name": "慶",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    },
+    {
+      "id": "場次十四",
+      "court": "場次十四",
+      "team1": {
+        "a": {
+          "id": "宇",
+          "name": "宇",
+          "gender": "M"
+        },
+        "b": {
+          "id": "慶",
+          "name": "慶",
+          "gender": "M"
+        }
+      },
+      "team2": {
+        "a": {
+          "id": "湘",
+          "name": "湘",
+          "gender": "F"
+        },
+        "b": {
+          "id": "哲",
+          "name": "哲",
+          "gender": "M"
+        }
+      },
+      "referee": {
+        "id": "源",
+        "name": "源",
+        "gender": "Other"
+      },
+      "lj1": {
+        "id": "懋",
+        "name": "懋",
+        "gender": "Other"
+      },
+      "lj2": {
+        "id": "勛",
+        "name": "勛",
+        "gender": "Other"
+      },
+      "status": "pending",
+      "scores": [],
+      "note": ""
+    }
+  ]);
   const [idx, setIdx] = useState(0);
   const cur = matches[idx];
   const prev = matches[idx - 1];
@@ -246,8 +891,8 @@ export default function MatchesPage() {
           </aside>
 
           {/* 右側：詳細區 */}
-          <div className="p-6 md:p-10 grid gap-6">
-            <div className="flex items-center justify-between gap-3">
+          <div className="p-6 md:p-10">
+             <div className="flex items-center justify-between gap-2 py-1">
               <div className="flex items-center gap-2">
                 <button onClick={() => go(-1)} disabled={!prev} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
                   <ChevronLeft className="h-4 w-4" /> 上一場
