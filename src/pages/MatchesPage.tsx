@@ -84,7 +84,7 @@ function GenderTag({ p, large = false }: { p: Player; large?: boolean }) {
 }
 
 // ========== 主元件 ==========
-export default function MatchManager({ matches: initialMatches = DEFAULT_MATCHES }: { matches?: Match[] }) {
+export default function MatchesPage({ matches: initialMatches = DEFAULT_MATCHES }: { matches?: Match[] }) {
   const [matches, setMatches] = useState<Match[]>(() => initialMatches.map(m => ({ status: "pending", scores: [], ...m })));
   const [idx, setIdx] = useState(0);
   const cur = matches[idx];
@@ -104,9 +104,9 @@ export default function MatchManager({ matches: initialMatches = DEFAULT_MATCHES
     const a = Number.parseInt(t1Score);
     const b = Number.parseInt(t2Score);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return alert("請輸入數字分數");
-    
-    setMatches(ms => ms.map((m, i) => (i === idx ? { ...m, status: "done", scores: [{ team1: a, team2: b }]} : m)));
-    
+
+    setMatches(ms => ms.map((m, i) => (i === idx ? { ...m, status: "done", scores: [{ team1: a, team2: b }] } : m)));
+
     // ✅ 呼叫 Netlify Function 寫入 Google Sheets
     const m = matches[idx];
     const payload = {
@@ -170,150 +170,154 @@ export default function MatchManager({ matches: initialMatches = DEFAULT_MATCHES
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "比賽成績");
-    XLSX.writeFile(wb, `比賽成績_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(wb, `比賽成績_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   return (
-    <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 grid grid-cols-1 lg:grid-cols-[320px_1fr]">
-      {/* 側邊：場次清單 */}
-      <aside className="border-b lg:border-b-0 lg:border-r border-neutral-800 bg-neutral-900/40 p-4 overflow-y-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-sm text-neutral-400">場次列表</div>
-          <button onClick={exportExcel} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm" title="匯出 Excel">
-            <FileSpreadsheet className="h-4 w-4" /> 匯出
-          </button>
-        </div>
-        <ul className="space-y-2">
-          {matches.map((m, i) => {
-            const sets = setWins(m.scores);
-            const sum = sumScores(m.scores);
-            const last = (m.scores && m.scores.length > 0) ? m.scores[m.scores.length - 1] : null;
-            const doneInfo = m.status === "done" ? (
-              <div className="mt-1 text-[12px] text-neutral-300 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/20 text-emerald-300 px-2 py-0.5 border border-emerald-700">
-                  <Trophy className="w-4 h-4 text-yellow-400" /> {winnerLabel(m) || "—"}
-                </span>
-                {last ? (
-                  <span className="opacity-90">比分 A {last.team1} : {last.team2} B</span>
-                ) : (
-                  <span className="opacity-50">未輸入分數</span>
-                )}
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+      {/* 置中容器 */}
+      <div className="w-full p-4 md:p-8">
+
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] rounded-3xl border border-neutral-800 bg-neutral-900/50 overflow-hidden shadow-2xl">
+          {/* 側邊：場次清單 */}
+          <aside className="border-b lg:border-b-0 lg:border-r border-neutral-800 bg-neutral-900/40 p-4 overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-neutral-400">場次列表</div>
+              <button onClick={exportExcel} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm" title="匯出 Excel">
+                <FileSpreadsheet className="h-4 w-4" /> 匯出
+              </button>
+            </div>
+            <ul className="space-y-2">
+              {matches.map((m, i) => {
+                const sets = setWins(m.scores);
+                const sum = sumScores(m.scores);
+                const last = (m.scores && m.scores.length > 0) ? m.scores[m.scores.length - 1] : null;
+                const doneInfo = m.status === "done" ? (
+                  <div className="mt-1 text-[12px] text-neutral-300 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/20 text-emerald-300 px-2 py-0.5 border border-emerald-700">
+                      <Trophy className="w-4 h-4 text-yellow-400" /> {winnerLabel(m) || "—"}
+                    </span>
+                    {last ? (
+                      <span className="opacity-90">比分 A {last.team1} : {last.team2} B</span>
+                    ) : (
+                      <span className="opacity-50">未輸入分數</span>
+                    )}
+                  </div>
+                ) : null;
+                return (
+                  <li key={m.id}>
+                    <button
+                      onClick={() => setIdx(i)}
+                      className={`w-full text-left rounded-xl border px-3 py-2 transition ${i === idx ? "border-blue-500 bg-blue-500/10" : "border-neutral-800 hover:bg-neutral-800/50"}`}
+                    >
+                      <div className="flex items-center justify-between text-xs text-neutral-400">
+                        <span>Match {i + 1}{m.court ? ` · Court ${m.court}` : ""}</span>
+                        <span className={m.status === "done" ? "text-emerald-400" : m.status === "live" ? "text-blue-400" : "text-neutral-400"}>
+                          {m.status === "done" ? "已結束" : m.status === "live" ? "進行中" : "未開始"}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm">
+                        <TeamText t={m.team1} /> <span className="opacity-60">vs</span> <TeamText t={m.team2} />
+                      </div>
+                      {doneInfo}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+
+          {/* 右側：詳細區 */}
+          <div className="p-6 md:p-10 grid gap-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button onClick={() => go(-1)} disabled={!prev} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
+                  <ChevronLeft className="h-4 w-4" /> 上一場
+                </button>
+                <button onClick={() => go(+1)} disabled={!next} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
+                  下一場 <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
-            ) : null;
-            return (
-              <li key={m.id}>
-                <button
-                  onClick={() => setIdx(i)}
-                  className={`w-full text-left rounded-xl border px-3 py-2 transition ${i === idx ? "border-blue-500 bg-blue-500/10" : "border-neutral-800 hover:bg-neutral-800/50"}`}
-                >
-                  <div className="flex items-center justify-between text-xs text-neutral-400">
-                    <span>Match {i + 1}{m.court ? ` · Court ${m.court}` : ""}</span>
-                    <span className={m.status === "done" ? "text-emerald-400" : m.status === "live" ? "text-blue-400" : "text-neutral-400"}>
-                      {m.status === "done" ? "已結束" : m.status === "live" ? "進行中" : "未開始"}
+              <div className="text-sm text-neutral-400">
+                {prev ? <>上一場：<span className="text-neutral-200">{prev.team1.a.name}／{prev.team1.b.name} vs {prev.team2.a.name}／{prev.team2.b.name}</span></> : <span>無上一場</span>}
+                <span className="mx-3 opacity-40">|</span>
+                {next ? <>下一場：<span className="text-neutral-200">{next.team1.a.name}／{next.team1.b.name} vs {next.team2.a.name}／{next.team2.b.name}</span></> : <span>無下一場</span>}
+              </div>
+            </div>
+
+            {cur ? (
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900/40 p-6 md:p-8 grid gap-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-neutral-400">COURT</span>
+                    <span className="text-3xl md:text-5xl font-black tracking-tight">{cur.court ?? "-"}</span>
+                    <div className="ml-4 inline-flex items-center gap-2 rounded-full bg-neutral-800/60 px-3 py-1 text-sm">
+                      <Users className="h-4 w-4" /> Match {idx + 1} / {matches.length}
+                    </div>
+                  </div>
+                  <div className="text-sm">
+                    <span className={cur.status === "done" ? "text-emerald-400" : cur.status === "live" ? "text-blue-400" : "text-neutral-400"}>
+                      {cur.status === "done" ? "已結束" : cur.status === "live" ? "進行中" : "未開始"}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm">
-                    <TeamText t={m.team1} /> <span className="opacity-60">vs</span> <TeamText t={m.team2} />
+                </div>
+
+                {/* 隊伍顯示（含性別 Icon / 顏色） */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="rounded-2xl border border-neutral-800 p-4">
+                    <div className="text-neutral-400 text-xs">隊伍 A</div>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      <GenderTag p={cur.team1.a} large />
+                      <GenderTag p={cur.team1.b} large />
+                    </div>
                   </div>
-                  {doneInfo}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </aside>
-
-      {/* 右側：詳細區 */}
-      <div className="p-6 md:p-10 grid gap-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button onClick={() => go(-1)} disabled={!prev} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
-              <ChevronLeft className="h-4 w-4" /> 上一場
-            </button>
-            <button onClick={() => go(+1)} disabled={!next} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
-              下一場 <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="text-sm text-neutral-400">
-            {prev ? <>上一場：<span className="text-neutral-200">{prev.team1.a.name}／{prev.team1.b.name} vs {prev.team2.a.name}／{prev.team2.b.name}</span></> : <span>無上一場</span>}
-            <span className="mx-3 opacity-40">|</span>
-            {next ? <>下一場：<span className="text-neutral-200">{next.team1.a.name}／{next.team1.b.name} vs {next.team2.a.name}／{next.team2.b.name}</span></> : <span>無下一場</span>}
-          </div>
-        </div>
-
-        {cur ? (
-          <div className="rounded-3xl border border-neutral-800 bg-neutral-900/40 p-6 md:p-8 grid gap-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-neutral-400">COURT</span>
-                <span className="text-3xl md:text-5xl font-black tracking-tight">{cur.court ?? "-"}</span>
-                <div className="ml-4 inline-flex items-center gap-2 rounded-full bg-neutral-800/60 px-3 py-1 text-sm">
-                  <Users className="h-4 w-4" /> Match {idx + 1} / {matches.length}
+                  <div className="rounded-2xl border border-neutral-800 p-4">
+                    <div className="text-neutral-400 text-xs">隊伍 B</div>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      <GenderTag p={cur.team2.a} large />
+                      <GenderTag p={cur.team2.b} large />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="text-sm">
-                <span className={cur.status === "done" ? "text-emerald-400" : cur.status === "live" ? "text-blue-400" : "text-neutral-400"}>
-                  {cur.status === "done" ? "已結束" : cur.status === "live" ? "進行中" : "未開始"}
-                </span>
-              </div>
-            </div>
 
-            {/* 隊伍顯示（含性別 Icon / 顏色） */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="rounded-2xl border border-neutral-800 p-4">
-                <div className="text-neutral-400 text-xs">隊伍 A</div>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  <GenderTag p={cur.team1.a} large />
-                  <GenderTag p={cur.team1.b} large />
+                {/* 裁判資訊（含性別 Icon / 顏色） */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
+                    <div className="flex items-center gap-2 text-neutral-400 text-xs"><Gavel className="h-4 w-4" /> 主審</div>
+                    <div className="mt-2"><GenderTag p={cur.referee} /></div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
+                    <div className="flex items-center gap-2 text-neutral-400 text-xs"><Binoculars className="h-4 w-4" /> 線審 1</div>
+                    <div className="mt-2"><GenderTag p={cur.lj1} /></div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
+                    <div className="flex items-center gap-2 text-neutral-400 text-xs"><Binoculars className="h-4 w-4" /> 線審 2</div>
+                    <div className="mt-2"><GenderTag p={cur.lj2} /></div>
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-2xl border border-neutral-800 p-4">
-                <div className="text-neutral-400 text-xs">隊伍 B</div>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  <GenderTag p={cur.team2.a} large />
-                  <GenderTag p={cur.team2.b} large />
-                </div>
-              </div>
-            </div>
 
-            {/* 裁判資訊（含性別 Icon / 顏色） */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
-                <div className="flex items-center gap-2 text-neutral-400 text-xs"><Gavel className="h-4 w-4"/> 主審</div>
-                <div className="mt-2"><GenderTag p={cur.referee} /></div>
-              </div>
-              <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
-                <div className="flex items-center gap-2 text-neutral-400 text-xs"><Binoculars className="h-4 w-4"/> 線審 1</div>
-                <div className="mt-2"><GenderTag p={cur.lj1} /></div>
-              </div>
-              <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
-                <div className="flex items-center gap-2 text-neutral-400 text-xs"><Binoculars className="h-4 w-4"/> 線審 2</div>
-                <div className="mt-2"><GenderTag p={cur.lj2} /></div>
-              </div>
-            </div>
-
-            {/* 分數區 */}
-            <div className="grid gap-4">
-              <div className="flex flex-col md:flex-row md:items-end gap-3">
-                <div className="flex-1">
-                  <label className="block text-sm text-neutral-400 mb-1">本局分數 — A 隊</label>
-                  <input value={t1Score} onChange={e => setT1Score(e.target.value.replace(/[^0-9]/g, ""))}
-                         className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600" placeholder="0" />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm text-neutral-400 mb-1">本局分數 — B 隊</label>
-                  <input value={t2Score} onChange={e => setT2Score(e.target.value.replace(/[^0-9]/g, ""))}
-                         className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600" placeholder="0" />
-                </div>
-                {/* <button onClick={addGameScore} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2">
+                {/* 分數區 */}
+                <div className="grid gap-4">
+                  <div className="flex flex-col md:flex-row md:items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-sm text-neutral-400 mb-1">本局分數 — A 隊</label>
+                      <input value={t1Score} onChange={e => setT1Score(e.target.value.replace(/[^0-9]/g, ""))}
+                        className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600" placeholder="0" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm text-neutral-400 mb-1">本局分數 — B 隊</label>
+                      <input value={t2Score} onChange={e => setT2Score(e.target.value.replace(/[^0-9]/g, ""))}
+                        className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600" placeholder="0" />
+                    </div>
+                    {/* <button onClick={addGameScore} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2">
                   <PlusCircle className="h-4 w-4"/> 新增一局
                 </button> */}
-                <button onClick={addGameScore} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2">
-                  <Check className="h-4 w-4"/> 對戰結束
-                </button>
-              </div>
+                    <button onClick={addGameScore} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2">
+                      <Check className="h-4 w-4" /> 對戰結束
+                    </button>
+                  </div>
 
-              {/* <div className="overflow-x-auto">
+                  {/* <div className="overflow-x-auto">
                 <table className="min-w-full text-sm border-separate border-spacing-y-2">
                   <thead className="text-neutral-400">
                     <tr>
@@ -338,11 +342,13 @@ export default function MatchManager({ matches: initialMatches = DEFAULT_MATCHES
                   </tbody>
                 </table>
               </div> */}
-            </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-neutral-400">沒有可顯示的場次</div>
+            )}
           </div>
-        ) : (
-          <div className="text-neutral-400">沒有可顯示的場次</div>
-        )}
+        </div>
       </div>
     </div>
   );

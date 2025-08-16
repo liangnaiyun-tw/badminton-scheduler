@@ -29,13 +29,13 @@ export default function App() {
         </div>
       </header>
 
-      <main className="container">
+      <main className="w-full">
         <div className="card">
           <Routes>
             <Route path="/" element={<Navigate to="/matches" replace />} />
             <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/matches" element={<MatchesPage />} />
-            <Route path="*" element={<div>找不到頁面</div>} />
+            <Route path="*" element={<MatchesPage />} />
           </Routes>
         </div>
       </main>
