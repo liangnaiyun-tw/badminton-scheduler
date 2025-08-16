@@ -117,7 +117,7 @@ export default function MatchesPage({ matches: initialMatches = DEFAULT_MATCHES 
       gameIndex: (m.scores?.length || 0) + 1,
       score1: a,
       score2: b,
-      status: m.status || "live",
+      status: m.status || "done",
       note: m.note || "",
     };
     fetch("/.netlify/functions/sheet-append", {
