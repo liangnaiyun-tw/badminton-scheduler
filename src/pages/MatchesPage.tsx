@@ -83,18 +83,36 @@ function GenderTag({ p, large = false }: { p: Player; large?: boolean }) {
   );
 }
 
+
+
 // ========== 主元件 ==========
-export default function MatchesPage({ matches: initialMatches = DEFAULT_MATCHES }: { matches?: Match[] }) {
-  const [matches, setMatches] = useState<Match[]>(() => initialMatches.map(m => ({ status: "pending", scores: [], ...m })));
+export default function MatchesPage() {
+  const [matches, setMatches] = useState<Match[]>([]);
   const [idx, setIdx] = useState(0);
   const cur = matches[idx];
   const prev = matches[idx - 1];
   const next = matches[idx + 1];
 
+  const loadFromSheetAndSaveDefault = async () => {
+    const res = await fetch("/.netlify/functions/sheet-read"); // 你前面做好的讀表 function
+    if (!res.ok) return alert("讀取 Google Sheet 失敗");
+    const data = await res.json();
+    const ms = (data.matches as Match[]) ?? [];
+
+    // 同步畫面（把 state 換成這份）
+    setMatches(ms.map(m => ({ status: "pending", scores: [], ...m })));
+
+    alert(`已從 Google Sheet 載入 ${ms.length} 筆，並存為預設 DEFAULT_MATCHES`);
+  };
+
   // 切換場次時標記狀態
   useEffect(() => {
     setMatches(ms => ms.map((m, i) => (i === idx ? { ...m, status: m.status === "done" ? "done" : "live" } : m)));
   }, [idx]);
+
+  useEffect(() => {
+     loadFromSheetAndSaveDefault();
+  }, []);
 
   // 分數輸入
   const [t1Score, setT1Score] = useState<string>("");
@@ -353,57 +371,3 @@ export default function MatchesPage({ matches: initialMatches = DEFAULT_MATCHES 
     </div>
   );
 }
-
-
-// ===== 範例資料（可自行替換） =====
-const P = (id: string, name: string, gender: Gender = "M"): Player => ({ id, name, gender });
-const DEFAULT_MATCHES: Match[] = [
-  {
-    id: "m1",
-    court: 1,
-    team1: { a: P("A", "王小明"), b: P("B", "李小美", "F") },
-    team2: { a: P("C", "林阿成"), b: P("D", "陳佳佳", "F") },
-    referee: P("R1", "主審甲"),
-    lj1: P("L1", "線審甲"),
-    lj2: P("L2", "線審乙"),
-    status: "pending",
-    scores: [],
-  },
-  {
-    id: "m2",
-    court: 2,
-    team1: { a: P("E", "張友誼"), b: P("F", "黃采恩", "F") },
-    team2: { a: P("G", "趙以樂"), b: P("H", "周芷萱", "F") },
-    referee: P("R2", "主審乙"),
-    lj1: P("L3", "線審丙"),
-    lj2: P("L4", "線審丁"),
-    status: "pending",
-    scores: [],
-  },
-];
-
-// ===== 內建簡易測試（不影響 UI） =====
-(function runInlineTests() {
-  // 局數勝負與總分加總
-  const tA: Team = { a: P("x1", "A1"), b: P("x2", "A2") };
-  const tB: Team = { a: P("y1", "B1"), b: P("y2", "B2") };
-  const m: Match = {
-    id: "t1",
-    team1: tA,
-    team2: tB,
-    referee: P("r", "R"),
-    lj1: P("l1", "L1"),
-    lj2: P("l2", "L2"),
-    scores: [
-      { team1: 21, team2: 15 },
-      { team1: 18, team2: 21 },
-      { team1: 21, team2: 19 },
-    ],
-  };
-  const w = winnerLabel(m);
-  const sets = setWins(m.scores);
-  const sum = sumScores(m.scores);
-  console.assert(w === `${tA.a.name}／${tA.b.name}`, "winnerLabel should pick Team A");
-  console.assert(sets.a === 2 && sets.b === 1, "setWins should count per set winner");
-  console.assert(sum.t1 === 60 && sum.t2 === 55, "sumScores should add points correctly");
-})();
