@@ -753,14 +753,21 @@ function exportScheduleCSV(matches: MatchAssignment[]) {
 /* 範例資料 */
 function samplePlayers(): Player[] {
   const base: Array<{ name: string; gender: Gender; level: Level }> = [
-    { name: "梁", gender: "F", level: 6 },
-    { name: "源", gender: "M", level: 5 },
-    { name: "慶", gender: "M", level: 7 },
     { name: "宇", gender: "M", level: 5 },
     { name: "哲", gender: "M", level: 6 },
+    { name: "志", gender: "M", level: 7 },
+    { name: "任", gender: "M", level: 7 },
+    { name: "源", gender: "M", level: 5 },
+    { name: "梁", gender: "F", level: 6 },
+    { name: "慶", gender: "M", level: 7 },
     { name: "懋", gender: "M", level: 8 },
-    { name: "勛", gender: "M", level: 8 },
-    { name: "湘", gender: "F", level: 3 }
+    { name: "澤", gender: "M", level: 3 },
+    { name: "尼", gender: "F", level: 9 },
+    { name: "湘", gender: "F", level: 3 },
+    { name: "珠", gender: "F", level: 5 },
+    { name: "菱", gender: "F", level: 5 }
+    // { name: "勛", gender: "M", level: 8 },
+    
   ];
   return base.map((b) => ({ id: uid(), name: b.name, selected: true, skill: b.level, level: b.level, gender: b.gender }));
 }
