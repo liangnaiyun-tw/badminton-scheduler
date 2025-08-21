@@ -32,7 +32,7 @@ export default function App() {
       <main className="w-full">
         <div className="card">
           <Routes>
-            <Route path="/" element={<Navigate to="/matches" replace />} />
+            <Route path="/" element={<Navigate to="/schedule" replace />} />
             <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/matches" element={<MatchesPage />} />
             <Route path="*" element={<MatchesPage />} />

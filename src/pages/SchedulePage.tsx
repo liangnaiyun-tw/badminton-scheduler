@@ -7,14 +7,14 @@ import { InformationCircleIcon } from "@heroicons/react/24/outline";
 const genders = ["M", "F", "Other"] as const;
 type Gender = typeof genders[number];
 
-/* ---- Level / Skill (1–8) 與說明 ---- */
-export type Level = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-type Skill = Level; // skill 也走 1–8
+/* ---- Level / Skill (1–12) 與說明 ---- */
+export type Level = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+type Skill = Level; // skill 也走 1–12
 
-const clampLevel = (n: number): Level => (n < 1 ? 1 : n > 8 ? 8 : (n as Level));
+const clampLevel = (n: number): Level => (n < 1 ? 1 : n > 12 ? 12 : (n as Level));
 const levelLabel = (lv: Level) => `Lv.${lv}`;
 
-/** 參考台灣羽球推廣協會分級（精簡版 1–8） */
+/** 參考台灣羽球推廣協會分級（精簡版 1–12） */
 const LEVEL_INFO: Record<Level, { title: string; desc: string }> = {
   1: { title: "新手階", desc: "剛接觸規則與禮儀，基本發球/回球成功率較低。" },
   2: { title: "新手階", desc: "能在中場以平抽/高球往返約10拍，發球成功率約半數。" },
@@ -24,14 +24,20 @@ const LEVEL_INFO: Record<Level, { title: string; desc: string }> = {
   6: { title: "初中階", desc: "步伐順暢；能後場進攻與網前變化；偶有非受迫失誤；一般球團中下段位。" },
   7: { title: "初中階", desc: "殺/切/勾能定點或變向；攻守有概念，準確率約7成；具初步防守能力。" },
   8: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  9: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  10: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  11: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  12: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" }
 };
 
-/** 顏色分帶（1–3 綠、4–6 粉、7–8 黃） */
+/** 顏色分帶（1–3 綠、4–6 粉、7–8 黃、9-12 藍） */
 const levelBand = (lv: Level) => {
   let color = "#22c55e"; // 1–3 綠
   if (lv >= 4 && lv <= 6) color = "#ec4899"; // 4–6 粉
-  if (lv >= 7) color = "#f59e0b"; // 7–8 黃
+  if (lv >= 7 && lv <= 8) color = "#f59e0b"; // 7–8 黃
+  if (lv >= 9 && lv <= 12) color = "#3b82f6"; // 9–12 藍 (可自行換色)
   return { title: LEVEL_INFO[lv].title, color };
+  
 };
 
 /* =========================
@@ -386,7 +392,7 @@ function LevelPills({ value, onChange, disabled }: { value?: Level; onChange: (l
   return (
     <div className="flex items-center gap-2">
       <div role="radiogroup" aria-label="Select player level" className="flex flex-wrap gap-1.5">
-        {[1,2,3,4,5,6,7,8].map(n => {
+        {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
           const active = v === n; const { color } = levelBand(n as Level);
           return (
             <button key={n} role="radio" aria-checked={active} onClick={() => !disabled && onChange(n as Level)} disabled={disabled}
@@ -569,7 +575,7 @@ function PlayerEditor({ players, setPlayers }: { players: Player[]; setPlayers: 
             <th className="text-left p-2">選</th>
             <th className="text-left p-2">姓名</th>
             <th className="text-left p-2">性別</th>
-            <th className="text-left p-2">等級(1-8)</th>
+            <th className="text-left p-2">等級(1-12)</th>
             <th className="text-left p-2"></th>
           </tr>
         </thead>
@@ -612,7 +618,7 @@ function AddPlayer({ onAdd }: { onAdd: (p: Player) => void }) {
           </select>
         </label>
         <label className="text-sm">
-          <div className="text-slate-600 mb-1">等級(1-8)</div>
+          <div className="text-slate-600 mb-1">等級(1-12)</div>
           <LevelPills value={level} onChange={setLevel} />
         </label>
         <button className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-700"
