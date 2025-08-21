@@ -511,7 +511,7 @@ function LevelPills({ value, onChange, disabled }: { value?: Level; onChange: (l
 export default function SchedulePage() {
   const [players, setPlayers] = useState<Player[]>(() => samplePlayers());
   const [settings, setSettings] = useState<Settings>(() => ({
-    courts: 1,
+    courts: 2,
     slotMinsLong: 12,
     slotMinsShort: 8,
     shortMatchThreshold: 7,
