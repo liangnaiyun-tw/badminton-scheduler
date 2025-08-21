@@ -37,7 +37,7 @@ const levelBand = (lv: Level) => {
   if (lv >= 7 && lv <= 8) color = "#f59e0b"; // 7–8 黃
   if (lv >= 9 && lv <= 12) color = "#3b82f6"; // 9–12 藍 (可自行換色)
   return { title: LEVEL_INFO[lv].title, color };
-  
+
 };
 
 /* =========================
@@ -79,6 +79,8 @@ type Settings = {
   strongFemaleAsMale?: boolean;     // 預設 true（混排判定用）
   strongLevelThreshold?: Level;     // 預設 7（>=7 的女生可視為男）
   reroll?: number;                  // 每按一次重新隨機，改變 seed
+  shareOfficialsAcrossCourts?: boolean; // 新增：是否允許同時段跨場共享執法
+  officialsPerCourt?: 1 | 2 | 3;        // 進階：每場需要的執法人數，預設 3
 };
 
 /* =========================
@@ -101,7 +103,7 @@ function uid() { return Math.random().toString(36).slice(2, 9); }
 
 // 簡單的 seeded RNG（mulberry32）
 function mulberry32(seed: number) {
-  return function() {
+  return function () {
     let t = (seed += 0x6D2B79F5);
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -126,57 +128,72 @@ function isMixedPair(a: Player, b: Player, s: Settings) {
 const sortPair = (a: string, b: string) => (a < b ? [a, b] : [b, a]);
 const key2 = (a: string, b: string) => sortPair(a, b).join("|");
 
-export function generateSchedule(playersAll: Player[], settings: Settings): { matches: MatchAssignment[]; usedShort: boolean } {
-  const players = playersAll.filter(p => p.selected);
+export function generateSchedule(
+  playersAll: Player[],
+  settings: Settings
+): { matches: MatchAssignment[]; usedShort: boolean } {
+  const players = playersAll.filter((p) => p.selected);
   const courts = Math.max(1, settings.courts);
-  const maxMate = settings.maxSameTeammateTogether ?? 1; // 硬限制：同隊夥伴最多 1 次
-  const maxOpp  = settings.maxSameOpponent ?? 2;         // 硬限制：個人對個人最多 2 次
-  const maxConsec = settings.maxConsecutivePlays ?? 2;
 
-  // 建立 seed，讓每次按鈕都能得到不同結果
+  // 硬限制
+  const maxMate = settings.maxSameTeammateTogether ?? 1; // 同隊夥伴最多 1 次
+  const maxOpp = settings.maxSameOpponent ?? 2;          // 個人對個人最多 2 次
+  const maxConsec = settings.maxConsecutivePlays ?? 2;   // 最多連打兩場
+
+  // 建立 seed（按鈕重擲 + 人數 + 場數）
   const seedBase = (settings.reroll ?? 0) + players.length * 97 + courts * 131;
   const rng = mulberry32(seedBase);
 
-  // 時段
+  // 時段計算
   const start = timeAt(settings.dateISO, settings.startHH, settings.startMM);
   const end = timeAt(settings.dateISO, settings.endHH, settings.endMM);
   const needShort = players.length / courts > (settings.shortMatchThreshold ?? 7);
   const slotLen = needShort ? settings.slotMinsShort : settings.slotMinsLong;
 
   const slots: Array<{ idx: number; start: Date; end: Date }> = [];
-  let t = new Date(start); let idx = 0;
+  let t = new Date(start);
+  let idx = 0;
   while (addMinutes(t, slotLen) <= end) {
-    const s = new Date(t); const e = addMinutes(t, slotLen);
+    const s = new Date(t);
+    const e = addMinutes(t, slotLen);
     slots.push({ idx, start: s, end: e });
-    t = e; idx++;
+    t = e;
+    idx++;
   }
 
   // 轉索引
-  const byId = new Map(players.map(p => [p.id, p] as const));
-  const ids = players.map(p => p.id);
+  const byId = new Map(players.map((p) => [p.id, p] as const));
+  const ids = players.map((p) => p.id);
 
-  // 統計（沿用你 Python 版的概念）
+  // 統計
   const partnerCounts = new Map<string, number>(); // "a|b" -> 次數
   const vsCounts = new Map<string, number>();      // "a|b" -> 次數（對手）
   const playCounts = new Map<string, number>();    // id -> 打球次數
-  const offCounts  = new Map<string, number>();    // id -> 執法次數
-  const consec     = new Map<string, number>();    // id -> 目前連打
-  const lastPlayed = new Map<string, number>();    // id -> 上次打球的 slotIdx
-  ids.forEach(id => { playCounts.set(id, 0); offCounts.set(id, 0); consec.set(id, 0); lastPlayed.set(id, -99); });
+  const offCounts = new Map<string, number>();     // id -> 執法次數
+  const consec = new Map<string, number>();        // id -> 目前連打
+  const lastPlayed = new Map<string, number>();    // id -> 上次打球 slotIdx
+  ids.forEach((id) => {
+    playCounts.set(id, 0);
+    offCounts.set(id, 0);
+    consec.set(id, 0);
+    lastPlayed.set(id, -99);
+  });
 
-  // 權重（軟性評分；有了硬限制後僅作為次要因素）
+  // 權重（軟性評分）
   const W_BREAK_PARTNER = 50;
   const W_BREAK_OPP = 50;
   const W_CONSEC = 30;
   const W_MIX_BONUS = -5;
-  const W_LOAD = 1;      // 打球負載
-  const W_REF = 0.5;     // 執法負載
+  const W_LOAD = 1; // 打球負載
+  const W_REF = 0.5; // 執法負載
 
-  const opponentsPairs = (t1: [string,string], t2: [string,string]) => {
-    const [a,b] = t1, [c,d] = t2; return [key2(a,c), key2(a,d), key2(b,c), key2(b,d)];
+  const opponentsPairs = (t1: [string, string], t2: [string, string]) => {
+    const [a, b] = t1,
+      [c, d] = t2;
+    return [key2(a, c), key2(a, d), key2(b, c), key2(b, d)];
   };
 
-  // —— 新增：硬性限制檢查（同隊夥伴 ≤ maxMate；個人對個人 ≤ maxOpp）
+  // —— 硬性限制檢查（同隊夥伴 ≤ maxMate；個人對個人 ≤ maxOpp）
   function wouldExceedPartnerOrOpp(
     t1: [string, string],
     t2: [string, string],
@@ -193,7 +210,16 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
     return false;
   }
 
-  function costOf(m: { team1: [string,string]; team2: [string,string]; ref: string; lj1: string; lj2: string; }, slotIndex: number) {
+  function costOf(
+    m: {
+      team1: [string, string];
+      team2: [string, string];
+      ref: string;
+      lj1: string;
+      lj2: string;
+    },
+    slotIndex: number
+  ) {
     let score = 0;
     const pk1 = key2(m.team1[0], m.team1[1]);
     const pk2 = key2(m.team2[0], m.team2[1]);
@@ -208,25 +234,38 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
     }
 
     for (const pid of [...m.team1, ...m.team2]) {
-      const lp = lastPlayed.get(pid)!; const c = consec.get(pid)!;
-      if (slotIndex - lp === 1 && c + 1 > maxConsec) score += W_CONSEC * (c + 1 - maxConsec);
+      const lp = lastPlayed.get(pid)!;
+      const c = consec.get(pid)!;
+      if (slotIndex - lp === 1 && c + 1 > maxConsec)
+        score += W_CONSEC * (c + 1 - maxConsec);
     }
 
     // 混雙獎勵（非硬性）
-    const t1a = byId.get(m.team1[0])!, t1b = byId.get(m.team1[1])!;
-    const t2a = byId.get(m.team2[0])!, t2b = byId.get(m.team2[1])!;
+    const t1a = byId.get(m.team1[0])!,
+      t1b = byId.get(m.team1[1])!,
+      t2a = byId.get(m.team2[0])!,
+      t2b = byId.get(m.team2[1])!;
     if (isMixedPair(t1a, t1b, settings)) score += W_MIX_BONUS;
     if (isMixedPair(t2a, t2b, settings)) score += W_MIX_BONUS;
 
     // 打球/執法負載（極差）
-    const playTmp = new Map(playCounts); for (const pid of [...m.team1, ...m.team2]) playTmp.set(pid, (playTmp.get(pid)! + 1));
-    const pVals = [...playTmp.values()]; if (pVals.length) score += W_LOAD * (Math.max(...pVals) - Math.min(...pVals));
-    const offTmp = new Map(offCounts); for (const pid of [m.ref, m.lj1, m.lj2]) offTmp.set(pid, (offTmp.get(pid)! + 1));
-    const oVals = [...offTmp.values()]; if (oVals.length) score += W_REF * (Math.max(...oVals) - Math.min(...oVals));
+    const playTmp = new Map(playCounts);
+    for (const pid of [...m.team1, ...m.team2])
+      playTmp.set(pid, playTmp.get(pid)! + 1);
+    const pVals = [...playTmp.values()];
+    if (pVals.length) score += W_LOAD * (Math.max(...pVals) - Math.min(...pVals));
+
+    const offTmp = new Map(offCounts);
+    for (const pid of [m.ref, m.lj1, m.lj2])
+      offTmp.set(pid, (offTmp.get(pid) ?? 0) + 1);
+    const oVals = [...offTmp.values()];
+    if (oVals.length) score += W_REF * (Math.max(...oVals) - Math.min(...oVals));
 
     // 小加權：避免兩隊等級總和差太大
     const lv = (id: string) => byId.get(id)!.level ?? 1;
-    const diff = Math.abs((lv(m.team1[0]) + lv(m.team1[1])) - (lv(m.team2[0]) + lv(m.team2[1])));
+    const diff = Math.abs(
+      (lv(m.team1[0]) + lv(m.team1[1])) - (lv(m.team2[0]) + lv(m.team2[1]))
+    );
     score += diff * 0.2;
 
     // 追加：極小亂數作為 tie-breaker
@@ -235,39 +274,85 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
     return score;
   }
 
-  function commit(m: { team1: [string,string]; team2: [string,string]; ref: string; lj1: string; lj2: string; }, slotIndex: number) {
+  function commit(
+    m: {
+      team1: [string, string];
+      team2: [string, string];
+      ref: string;
+      lj1: string;
+      lj2: string;
+    },
+    slotIndex: number
+  ) {
     const pk1 = key2(m.team1[0], m.team1[1]);
     const pk2 = key2(m.team2[0], m.team2[1]);
     partnerCounts.set(pk1, (partnerCounts.get(pk1) ?? 0) + 1);
     partnerCounts.set(pk2, (partnerCounts.get(pk2) ?? 0) + 1);
-    for (const k of opponentsPairs(m.team1, m.team2)) vsCounts.set(k, (vsCounts.get(k) ?? 0) + 1);
+    for (const k of opponentsPairs(m.team1, m.team2))
+      vsCounts.set(k, (vsCounts.get(k) ?? 0) + 1);
     for (const pid of [...m.team1, ...m.team2]) {
-      const lp = lastPlayed.get(pid)!; if (slotIndex - lp === 1) consec.set(pid, (consec.get(pid)! + 1)); else consec.set(pid, 1);
-      lastPlayed.set(pid, slotIndex); playCounts.set(pid, (playCounts.get(pid)! + 1));
+      const lp = lastPlayed.get(pid)!;
+      if (slotIndex - lp === 1)
+        consec.set(pid, (consec.get(pid)! + 1));
+      else consec.set(pid, 1);
+      lastPlayed.set(pid, slotIndex);
+      playCounts.set(pid, playCounts.get(pid)! + 1);
     }
-    for (const pid of [m.ref, m.lj1, m.lj2]) offCounts.set(pid, (offCounts.get(pid)! + 1));
+    for (const pid of [m.ref, m.lj1, m.lj2])
+      offCounts.set(pid, (offCounts.get(pid) ?? 0) + 1);
   }
 
   function playable(pid: string, slotIndex: number) {
-    const lp = lastPlayed.get(pid)!; const c = consec.get(pid)!;
+    const lp = lastPlayed.get(pid)!;
+    const c = consec.get(pid)!;
     if (slotIndex - lp === 1 && c >= maxConsec) return false;
     return true;
   }
 
-  function feasibleOfficials(pool: string[]): [string,string,string][] {
-    // 優先選擇執法次數少的人（可重複多場，無硬限制）
-    const ranked = [...pool].sort((a,b) => (offCounts.get(a)! - offCounts.get(b)!));
-    const res: [string,string,string][] = [];
-    for (let i=0; i+2<ranked.length && res.length<6; i++) res.push([ranked[i], ranked[i+1], ranked[i+2]]);
+  // ★ 可變人數的執法產生器（回傳固定 [ref, lj1, lj2] 結構；當 N<3 時會用其他人補齊）
+  function feasibleOfficials(pool: string[], N: number): [string, string, string][] {
+    const ranked = [...pool].sort(
+      (a, b) => (offCounts.get(a)! - offCounts.get(b)!)
+    );
+    const res: [string, string, string][] = [];
+    if (ranked.length === 0) return res;
+
+    // 產生一些候選組合（最多取前段，避免爆量）
+    const limit = Math.min(12, ranked.length);
+    for (let i = 0; i < limit; i++) {
+      if (N === 1) {
+        const r = ranked[i];
+        // 補齊兩個名額（若人太少，允許重複）
+        const l1 = ranked[(i + 1) % limit] ?? r;
+        const l2 = ranked[(i + 2) % limit] ?? r;
+        res.push([r, l1, l2]);
+      } else if (N === 2) {
+        if (i + 1 >= limit) break;
+        const r = ranked[i], l1 = ranked[i + 1];
+        const l2 = ranked[(i + 2) % limit] ?? l1;
+        res.push([r, l1, l2]);
+      } else {
+        if (i + 2 >= limit) break;
+        res.push([ranked[i], ranked[i + 1], ranked[i + 2]]);
+      }
+      if (res.length >= 6) break; // 不用太多
+    }
     return res;
   }
 
-  function candidateTeams(four: string[]): [ [string,string], [string,string] ][] {
-    const [a,b,c,d] = four;
-    const pairings: [ [string,string], [string,string] ][] = [ [[a,b],[c,d]], [[a,c],[b,d]], [[a,d],[b,c]] ];
-    const scorePair = (t1: [string,string], t2: [string,string]) => {
+  function candidateTeams(four: string[]): [[string, string], [string, string]][] {
+    const [a, b, c, d] = four;
+    const pairings: [[string, string], [string, string]][] = [
+      [[a, b], [c, d]],
+      [[a, c], [b, d]],
+      [[a, d], [b, c]],
+    ];
+    const scorePair = (t1: [string, string], t2: [string, string]) => {
       let s = 0;
-      const A1 = byId.get(t1[0])!, A2 = byId.get(t1[1])!, B1 = byId.get(t2[0])!, B2 = byId.get(t2[1])!;
+      const A1 = byId.get(t1[0])!,
+        A2 = byId.get(t1[1])!,
+        B1 = byId.get(t2[0])!,
+        B2 = byId.get(t2[1])!;
       if (isMixedPair(A1, A2, settings)) s -= 2;
       if (isMixedPair(B1, B2, settings)) s -= 2;
       s += (partnerCounts.get(key2(...t1)) ?? 0);
@@ -275,21 +360,28 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
       for (const k of opponentsPairs(t1, t2)) s += (vsCounts.get(k) ?? 0);
       return s;
     };
-    // 打散一點：先依分數，再以 seed 加點隨機
-    return pairings.sort((p,q) => {
+    return pairings.sort((p, q) => {
       const diff = scorePair(...p) - scorePair(...q);
-      return diff !== 0 ? diff : (rng() - 0.5);
+      return diff !== 0 ? diff : rng() - 0.5;
     });
   }
 
   function nextCourtCandidates(slotIndex: number, usedThisSlot: Set<string>) {
     // 候選母集：可上、且本 slot 尚未被用到
-    let pool = ids.filter(pid => playable(pid, slotIndex) && !usedThisSlot.has(pid));
-    if (pool.length < 4) pool = ids.filter(pid => !usedThisSlot.has(pid)); // 若不足四人，放寬連打限制
+    let pool = ids.filter(
+      (pid) => playable(pid, slotIndex) && !usedThisSlot.has(pid)
+    );
+    if (pool.length < 4) {
+      // 若不足四人，放寬連打限制（但仍不能與本時段已被占用的重疊）
+      pool = ids.filter((pid) => !usedThisSlot.has(pid));
+    }
     // 按打球次數、連打次數排序，再以 seed 輕度打散
-    pool.sort((a,b) => (playCounts.get(a)! - playCounts.get(b)!) || (consec.get(a)! - consec.get(b)!));
+    pool.sort(
+      (a, b) =>
+        (playCounts.get(a)! - playCounts.get(b)!) ||
+        (consec.get(a)! - consec.get(b)!)
+    );
     if (pool.length > 1) {
-      // Fisher–Yates 部分洗牌（限前 8 名）
       const top = Math.min(8, pool.length);
       for (let i = top - 1; i > 0; i--) {
         const j = Math.floor(rng() * (i + 1));
@@ -300,35 +392,47 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
 
     // 產生四人組合
     const combs: string[][] = [];
-    for (let i=0;i<pool.length;i++)
-      for (let j=i+1;j<pool.length;j++)
-        for (let k=j+1;k<pool.length;k++)
-          for (let l=k+1;l<pool.length;l++) combs.push([pool[i],pool[j],pool[k],pool[l]]);
+    for (let i = 0; i < pool.length; i++)
+      for (let j = i + 1; j < pool.length; j++)
+        for (let k = j + 1; k < pool.length; k++)
+          for (let l = k + 1; l < pool.length; l++)
+            combs.push([pool[i], pool[j], pool[k], pool[l]]);
 
-    // —— 兩階段：先收集不違規（strict），否則退回軟限制（soft）
-    const strict: { team1:[string,string]; team2:[string,string]; ref:string; lj1:string; lj2:string; }[] = [];
-    const soft:   { team1:[string,string]; team2:[string,string]; ref:string; lj1:string; lj2:string; }[] = [];
+    const strict: {
+      team1: [string, string];
+      team2: [string, string];
+      ref: string;
+      lj1: string;
+      lj2: string;
+    }[] = [];
+    const soft: typeof strict = [];
+
+    const allowReuse = !!settings.shareOfficialsAcrossCourts;
+    const N = settings.officialsPerCourt ?? 3;
 
     for (const four of combs) {
       for (const [t1, t2] of candidateTeams(four)) {
         const playing = new Set([...t1, ...t2]);
-        const rest = ids.filter(x => !playing.has(x) && !usedThisSlot.has(x));
+
+        // rest：可做執法的人
+        const rest = ids.filter(
+          (x) => !playing.has(x) && (allowReuse ? true : !usedThisSlot.has(x))
+        );
 
         const hardOK = !wouldExceedPartnerOrOpp(t1, t2, maxMate, maxOpp);
 
-        // 主審／線審：不設重複上限，只要不是本場上場球員即可
-        for (const [r, l1, l2] of feasibleOfficials(rest)) {
+        for (const [r, l1, l2] of feasibleOfficials(rest, N)) {
           const item = { team1: t1, team2: t2, ref: r, lj1: l1, lj2: l2 };
-          if (hardOK) strict.push(item); else soft.push(item);
+          if (hardOK) strict.push(item);
+          else soft.push(item);
         }
       }
     }
 
     const candidatePool = strict.length ? strict : soft;
-    // 先看成本，再加上微小亂數
-    return candidatePool.sort((a,b) => {
+    return candidatePool.sort((a, b) => {
       const diff = costOf(a, slotIndex) - costOf(b, slotIndex);
-      return diff !== 0 ? diff : (rng() - 0.5);
+      return diff !== 0 ? diff : rng() - 0.5;
     });
   }
 
@@ -336,24 +440,41 @@ export function generateSchedule(playersAll: Player[], settings: Settings): { ma
 
   for (const slot of slots) {
     const usedThisSlot = new Set<string>();
-    for (let court=1; court<=courts; court++) {
+    for (let court = 1; court <= courts; court++) {
       const cands = nextCourtCandidates(slot.idx, usedThisSlot);
       if (!cands.length) break; // 這個時段排不出更多
       const m = cands[0]; // 取成本最低者
-      // 提交到統計 & 本 slot 佔位
+
+      // 提交統計
       commit(m, slot.idx);
-      for (const pid of [...m.team1, ...m.team2, m.ref, m.lj1, m.lj2]) usedThisSlot.add(pid);
+
+      // 寫入 slot 佔位：球員一定佔位；執法視設定決定是否佔位
+      for (const pid of [...m.team1, ...m.team2]) usedThisSlot.add(pid);
+      if (!settings.shareOfficialsAcrossCourts) {
+        for (const pid of [m.ref, m.lj1, m.lj2]) usedThisSlot.add(pid);
+      }
 
       // 寫入可顯示的比賽卡
-      const teamA: [Player,Player] = [byId.get(m.team1[0])!, byId.get(m.team1[1])!];
-      const teamB: [Player,Player] = [byId.get(m.team2[0])!, byId.get(m.team2[1])!];
+      const teamA: [Player, Player] = [
+        byId.get(m.team1[0])!,
+        byId.get(m.team1[1])!,
+      ];
+      const teamB: [Player, Player] = [
+        byId.get(m.team2[0])!,
+        byId.get(m.team2[1])!,
+      ];
+
       matches.push({
         court,
         slotIndex: slot.idx,
         start: slot.start,
         end: slot.end,
         teams: [teamA, teamB],
-        officials: { umpire: byId.get(m.ref)!, line1: byId.get(m.lj1)!, line2: byId.get(m.lj2)! },
+        officials: {
+          umpire: byId.get(m.ref)!,
+          line1: byId.get(m.lj1)!,
+          line2: byId.get(m.lj2)!,
+        },
       });
     }
   }
@@ -392,7 +513,7 @@ function LevelPills({ value, onChange, disabled }: { value?: Level; onChange: (l
   return (
     <div className="flex items-center gap-2">
       <div role="radiogroup" aria-label="Select player level" className="flex flex-wrap gap-1.5">
-        {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => {
           const active = v === n; const { color } = levelBand(n as Level);
           return (
             <button key={n} role="radio" aria-checked={active} onClick={() => !disabled && onChange(n as Level)} disabled={disabled}
@@ -430,6 +551,8 @@ export default function SchedulePage() {
     strongFemaleAsMale: true,
     strongLevelThreshold: 7,
     reroll: 0,
+    shareOfficialsAcrossCourts: false,
+    officialsPerCourt: 3, // 預設每場需要 3 位執法官
   }));
 
   // 手動模式（可拖拉交換球員）
@@ -458,7 +581,7 @@ export default function SchedulePage() {
   const swapPlayers = (a: DragIndex, b: DragIndex) => {
     setManualMatches(prev => {
       if (!prev) return prev;
-      const copy = prev.map(m => ({ ...m, teams: [ [...m.teams[0]], [...m.teams[1]] ] as [Player[], Player[]] }));
+      const copy = prev.map(m => ({ ...m, teams: [[...m.teams[0]], [...m.teams[1]]] as [Player[], Player[]] }));
       const mA = copy.find(m => m.slotIndex === a.slotIndex && m.court === a.court);
       const mB = copy.find(m => m.slotIndex === b.slotIndex && m.court === b.court);
       if (!mA || !mB) return prev;
@@ -504,6 +627,20 @@ export default function SchedulePage() {
               <div className="flex items-center gap-2">
                 <input id="mixed" type="checkbox" checked={settings.preferMixed} onChange={(e) => setSettings({ ...settings, preferMixed: e.target.checked })} />
                 <label htmlFor="mixed" className="text-sm">偏好混雙</label>
+              </div>
+              {/* 新增：同時段可共用執法 */}
+              <div className="flex items-center gap-2">
+                <input
+                  id="shareOfficials"
+                  type="checkbox"
+                  checked={!!settings.shareOfficialsAcrossCourts}
+                  onChange={(e) =>
+                    setSettings({ ...settings, shareOfficialsAcrossCourts: e.target.checked })
+                  }
+                />
+                <label htmlFor="shareOfficials" className="text-sm">
+                  同時段可共用執法
+                </label>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <NumberField label="開始時" value={settings.startHH} min={6} max={22} onChange={(v) => setSettings({ ...settings, startHH: v })} />
@@ -652,14 +789,14 @@ function readPlayerDragData(e: React.DragEvent): DragIndex | null {
 function ScheduleTable({ matches, courts, manualMode, onSwap }: { matches: MatchAssignment[]; courts: number; manualMode?: boolean; onSwap?: (a: DragIndex, b: DragIndex) => void; }) {
   const bySlot = new Map<number, MatchAssignment[]>();
   for (const m of matches) { if (!bySlot.has(m.slotIndex)) bySlot.set(m.slotIndex, []); bySlot.get(m.slotIndex)!.push(m); }
-  const orderedSlots = [...bySlot.keys()].sort((a,b) => a-b);
+  const orderedSlots = [...bySlot.keys()].sort((a, b) => a - b);
   return (
     <div className="overflow-auto">
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-slate-50">
           <tr>
             <th className="text-left p-2">時間</th>
-            {[...Array(courts)].map((_,i) => (<th key={i} className="text-left p-2">第 {i+1} 場地</th>))}
+            {[...Array(courts)].map((_, i) => (<th key={i} className="text-left p-2">第 {i + 1} 場地</th>))}
           </tr>
         </thead>
         <tbody>
@@ -671,7 +808,7 @@ function ScheduleTable({ matches, courts, manualMode, onSwap }: { matches: Match
             return (
               <tr key={sIdx} className="border-t align-top">
                 <td className="p-2 whitespace-nowrap text-slate-600"><div>{start ? `${formatTime(start)}–${formatTime(end!)}` : "—"}</div></td>
-                {mByCourt.map((m,i) => (
+                {mByCourt.map((m, i) => (
                   <td key={i} className="p-2">{m ? <MatchCard m={m} manualMode={manualMode} onSwap={onSwap} /> : <div className="text-slate-400 italic">（此時段空場）</div>}</td>
                 ))}
               </tr>
@@ -730,12 +867,12 @@ function MatchCard({ m, manualMode, onSwap }: { m: MatchAssignment; manualMode?:
 /* 匯出 CSV（Excel 可直接開啟） */
 function exportScheduleCSV(matches: MatchAssignment[]) {
   if (!matches?.length) return;
-  const header = ["時間","場地","A1","A1(性別/Lv)","A2","A2(性別/Lv)","B1","B1(性別/Lv)","B2","B2(性別/Lv)","主審","線審1","線審2"];
-  const rows = [...matches].sort((a,b) => a.slotIndex - b.slotIndex || a.court - b.court).map(m => {
+  const header = ["時間", "場地", "A1", "A1(性別/Lv)", "A2", "A2(性別/Lv)", "B1", "B1(性別/Lv)", "B2", "B2(性別/Lv)", "主審", "線審1", "線審2"];
+  const rows = [...matches].sort((a, b) => a.slotIndex - b.slotIndex || a.court - b.court).map(m => {
     const tA = m.teams[0], tB = m.teams[1];
     const fmtP = (p: Player) => `${p.gender}/${levelLabel((p.level ?? 1) as Level)}`;
     const time = `${formatTime(m.start)}-${formatTime(m.end)}`;
-    return [ time, `第${m.court}場地`, tA[0].name, fmtP(tA[0]), tA[1].name, fmtP(tA[1]), tB[0].name, fmtP(tB[0]), tB[1].name, fmtP(tB[1]), m.officials.umpire.name, m.officials.line1.name, m.officials.line2.name ];
+    return [time, `第${m.court}場地`, tA[0].name, fmtP(tA[0]), tA[1].name, fmtP(tA[1]), tB[0].name, fmtP(tB[0]), tB[1].name, fmtP(tB[1]), m.officials.umpire.name, m.officials.line1.name, m.officials.line2.name];
   });
   const csv = [header, ...rows].map(r => r.map(cell => {
     const s = String(cell ?? "");
@@ -767,7 +904,7 @@ function samplePlayers(): Player[] {
     { name: "珠", gender: "F", level: 5 },
     { name: "菱", gender: "F", level: 5 }
     // { name: "勛", gender: "M", level: 8 },
-    
+
   ];
   return base.map((b) => ({ id: uid(), name: b.name, selected: true, skill: b.level, level: b.level, gender: b.gender }));
 }
