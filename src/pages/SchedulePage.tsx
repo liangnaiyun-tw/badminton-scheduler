@@ -80,7 +80,8 @@ type Settings = {
   strongLevelThreshold?: Level;     // 預設 7（>=7 的女生可視為男）
   reroll?: number;                  // 每按一次重新隨機，改變 seed
   shareOfficialsAcrossCourts?: boolean; // 新增：是否允許同時段跨場共享執法
-  officialsPerCourt?: 1 | 2 | 3;        // 進階：每場需要的執法人數，預設 3
+  // 每場需要的執法人數（1=只主審、2=主審+1線審、3=主審+2線審）
+  officialsPerCourt?: 1 | 2 | 3;
 };
 
 /* =========================
@@ -135,16 +136,13 @@ export function generateSchedule(
   const players = playersAll.filter((p) => p.selected);
   const courts = Math.max(1, settings.courts);
 
-  // 硬限制
-  const maxMate = settings.maxSameTeammateTogether ?? 1; // 同隊夥伴最多 1 次
-  const maxOpp = settings.maxSameOpponent ?? 2;          // 個人對個人最多 2 次
-  const maxConsec = settings.maxConsecutivePlays ?? 2;   // 最多連打兩場
+  const maxMate = settings.maxSameTeammateTogether ?? 1;
+  const maxOpp = settings.maxSameOpponent ?? 2;
+  const maxConsec = settings.maxConsecutivePlays ?? 2;
 
-  // 建立 seed（按鈕重擲 + 人數 + 場數）
   const seedBase = (settings.reroll ?? 0) + players.length * 97 + courts * 131;
   const rng = mulberry32(seedBase);
 
-  // 時段計算
   const start = timeAt(settings.dateISO, settings.startHH, settings.startMM);
   const end = timeAt(settings.dateISO, settings.endHH, settings.endMM);
   const needShort = players.length / courts > (settings.shortMatchThreshold ?? 7);
@@ -161,17 +159,15 @@ export function generateSchedule(
     idx++;
   }
 
-  // 轉索引
   const byId = new Map(players.map((p) => [p.id, p] as const));
   const ids = players.map((p) => p.id);
 
-  // 統計
-  const partnerCounts = new Map<string, number>(); // "a|b" -> 次數
-  const vsCounts = new Map<string, number>();      // "a|b" -> 次數（對手）
-  const playCounts = new Map<string, number>();    // id -> 打球次數
-  const offCounts = new Map<string, number>();     // id -> 執法次數
-  const consec = new Map<string, number>();        // id -> 目前連打
-  const lastPlayed = new Map<string, number>();    // id -> 上次打球 slotIdx
+  const partnerCounts = new Map<string, number>();
+  const vsCounts = new Map<string, number>();
+  const playCounts = new Map<string, number>();
+  const offCounts = new Map<string, number>();
+  const consec = new Map<string, number>();
+  const lastPlayed = new Map<string, number>();
   ids.forEach((id) => {
     playCounts.set(id, 0);
     offCounts.set(id, 0);
@@ -179,21 +175,18 @@ export function generateSchedule(
     lastPlayed.set(id, -99);
   });
 
-  // 權重（軟性評分）
   const W_BREAK_PARTNER = 50;
   const W_BREAK_OPP = 50;
   const W_CONSEC = 30;
   const W_MIX_BONUS = -5;
-  const W_LOAD = 1; // 打球負載
-  const W_REF = 0.5; // 執法負載
+  const W_LOAD = 1;
+  const W_REF = 0.5;
 
   const opponentsPairs = (t1: [string, string], t2: [string, string]) => {
-    const [a, b] = t1,
-      [c, d] = t2;
+    const [a, b] = t1, [c, d] = t2;
     return [key2(a, c), key2(a, d), key2(b, c), key2(b, d)];
   };
 
-  // —— 硬性限制檢查（同隊夥伴 ≤ maxMate；個人對個人 ≤ maxOpp）
   function wouldExceedPartnerOrOpp(
     t1: [string, string],
     t2: [string, string],
@@ -211,16 +204,11 @@ export function generateSchedule(
   }
 
   function costOf(
-    m: {
-      team1: [string, string];
-      team2: [string, string];
-      ref: string;
-      lj1: string;
-      lj2: string;
-    },
+    m: { team1: [string, string]; team2: [string, string]; ref: string; lj1: string; lj2: string; },
     slotIndex: number
   ) {
     let score = 0;
+
     const pk1 = key2(m.team1[0], m.team1[1]);
     const pk2 = key2(m.team2[0], m.team2[1]);
     const p1 = (partnerCounts.get(pk1) ?? 0) + 1;
@@ -236,70 +224,49 @@ export function generateSchedule(
     for (const pid of [...m.team1, ...m.team2]) {
       const lp = lastPlayed.get(pid)!;
       const c = consec.get(pid)!;
-      if (slotIndex - lp === 1 && c + 1 > maxConsec)
-        score += W_CONSEC * (c + 1 - maxConsec);
+      if (slotIndex - lp === 1 && c + 1 > maxConsec) score += W_CONSEC * (c + 1 - maxConsec);
     }
 
-    // 混雙獎勵（非硬性）
-    const t1a = byId.get(m.team1[0])!,
-      t1b = byId.get(m.team1[1])!,
-      t2a = byId.get(m.team2[0])!,
-      t2b = byId.get(m.team2[1])!;
+    const t1a = byId.get(m.team1[0])!, t1b = byId.get(m.team1[1])!;
+    const t2a = byId.get(m.team2[0])!, t2b = byId.get(m.team2[1])!;
     if (isMixedPair(t1a, t1b, settings)) score += W_MIX_BONUS;
     if (isMixedPair(t2a, t2b, settings)) score += W_MIX_BONUS;
 
-    // 打球/執法負載（極差）
     const playTmp = new Map(playCounts);
-    for (const pid of [...m.team1, ...m.team2])
-      playTmp.set(pid, playTmp.get(pid)! + 1);
+    for (const pid of [...m.team1, ...m.team2]) playTmp.set(pid, playTmp.get(pid)! + 1);
     const pVals = [...playTmp.values()];
     if (pVals.length) score += W_LOAD * (Math.max(...pVals) - Math.min(...pVals));
 
     const offTmp = new Map(offCounts);
-    for (const pid of [m.ref, m.lj1, m.lj2])
-      offTmp.set(pid, (offTmp.get(pid) ?? 0) + 1);
+    for (const pid of [m.ref, m.lj1, m.lj2]) offTmp.set(pid, (offTmp.get(pid) ?? 0) + 1);
     const oVals = [...offTmp.values()];
     if (oVals.length) score += W_REF * (Math.max(...oVals) - Math.min(...oVals));
 
-    // 小加權：避免兩隊等級總和差太大
     const lv = (id: string) => byId.get(id)!.level ?? 1;
-    const diff = Math.abs(
-      (lv(m.team1[0]) + lv(m.team1[1])) - (lv(m.team2[0]) + lv(m.team2[1]))
-    );
+    const diff = Math.abs((lv(m.team1[0]) + lv(m.team1[1])) - (lv(m.team2[0]) + lv(m.team2[1])));
     score += diff * 0.2;
 
-    // 追加：極小亂數作為 tie-breaker
     score += (rng() - 0.5) * 0.01;
-
     return score;
   }
 
   function commit(
-    m: {
-      team1: [string, string];
-      team2: [string, string];
-      ref: string;
-      lj1: string;
-      lj2: string;
-    },
+    m: { team1: [string, string]; team2: [string, string]; ref: string; lj1: string; lj2: string; },
     slotIndex: number
   ) {
     const pk1 = key2(m.team1[0], m.team1[1]);
     const pk2 = key2(m.team2[0], m.team2[1]);
     partnerCounts.set(pk1, (partnerCounts.get(pk1) ?? 0) + 1);
     partnerCounts.set(pk2, (partnerCounts.get(pk2) ?? 0) + 1);
-    for (const k of opponentsPairs(m.team1, m.team2))
-      vsCounts.set(k, (vsCounts.get(k) ?? 0) + 1);
+    for (const k of opponentsPairs(m.team1, m.team2)) vsCounts.set(k, (vsCounts.get(k) ?? 0) + 1);
     for (const pid of [...m.team1, ...m.team2]) {
       const lp = lastPlayed.get(pid)!;
-      if (slotIndex - lp === 1)
-        consec.set(pid, (consec.get(pid)! + 1));
+      if (slotIndex - lp === 1) consec.set(pid, consec.get(pid)! + 1);
       else consec.set(pid, 1);
       lastPlayed.set(pid, slotIndex);
       playCounts.set(pid, playCounts.get(pid)! + 1);
     }
-    for (const pid of [m.ref, m.lj1, m.lj2])
-      offCounts.set(pid, (offCounts.get(pid) ?? 0) + 1);
+    for (const pid of [m.ref, m.lj1, m.lj2]) offCounts.set(pid, (offCounts.get(pid) ?? 0) + 1);
   }
 
   function playable(pid: string, slotIndex: number) {
@@ -309,33 +276,35 @@ export function generateSchedule(
     return true;
   }
 
-  // ★ 可變人數的執法產生器（回傳固定 [ref, lj1, lj2] 結構；當 N<3 時會用其他人補齊）
+  // N 可為 1/2/3；若 pool 不足，會允許同一人擔任兩個線審位置（只要不是球員）
   function feasibleOfficials(pool: string[], N: number): [string, string, string][] {
-    const ranked = [...pool].sort(
-      (a, b) => (offCounts.get(a)! - offCounts.get(b)!)
-    );
+    const ranked = [...pool].sort((a, b) => (offCounts.get(a)! - offCounts.get(b)!));
     const res: [string, string, string][] = [];
     if (ranked.length === 0) return res;
 
-    // 產生一些候選組合（最多取前段，避免爆量）
     const limit = Math.min(12, ranked.length);
     for (let i = 0; i < limit; i++) {
       if (N === 1) {
         const r = ranked[i];
-        // 補齊兩個名額（若人太少，允許重複）
+        // 線審不足時允許重複（視覺上仍會有兩個位置，但代表缺線審）
         const l1 = ranked[(i + 1) % limit] ?? r;
         const l2 = ranked[(i + 2) % limit] ?? r;
         res.push([r, l1, l2]);
       } else if (N === 2) {
-        if (i + 1 >= limit) break;
-        const r = ranked[i], l1 = ranked[i + 1];
-        const l2 = ranked[(i + 2) % limit] ?? l1;
-        res.push([r, l1, l2]);
+        const r = ranked[i];
+        if (i + 1 >= limit) {
+          // 不足時用 r 重複補位
+          res.push([r, r, r]);
+        } else {
+          const l1 = ranked[i + 1];
+          const l2 = ranked[(i + 2) % limit] ?? l1;
+          res.push([r, l1, l2]);
+        }
       } else {
         if (i + 2 >= limit) break;
         res.push([ranked[i], ranked[i + 1], ranked[i + 2]]);
       }
-      if (res.length >= 6) break; // 不用太多
+      if (res.length >= 6) break;
     }
     return res;
   }
@@ -349,10 +318,7 @@ export function generateSchedule(
     ];
     const scorePair = (t1: [string, string], t2: [string, string]) => {
       let s = 0;
-      const A1 = byId.get(t1[0])!,
-        A2 = byId.get(t1[1])!,
-        B1 = byId.get(t2[0])!,
-        B2 = byId.get(t2[1])!;
+      const A1 = byId.get(t1[0])!, A2 = byId.get(t1[1])!, B1 = byId.get(t2[0])!, B2 = byId.get(t2[1])!;
       if (isMixedPair(A1, A2, settings)) s -= 2;
       if (isMixedPair(B1, B2, settings)) s -= 2;
       s += (partnerCounts.get(key2(...t1)) ?? 0);
@@ -366,16 +332,27 @@ export function generateSchedule(
     });
   }
 
-  function nextCourtCandidates(slotIndex: number, usedThisSlot: Set<string>) {
-    // 候選母集：可上、且本 slot 尚未被用到
+  // 主函式：取下一個可放入此場地的候選（考慮「不能讓裁判下場打球」）
+  function nextCourtCandidates(
+    slotIndex: number,
+    usedPlayersThisSlot: Set<string>,
+    usedOfficialsThisSlot: Set<string>
+  ) {
+    // 球員候選：不可為本時段球員，也不可為本時段任何場的裁判；且要符合連打限制
     let pool = ids.filter(
-      (pid) => playable(pid, slotIndex) && !usedThisSlot.has(pid)
+      (pid) =>
+        playable(pid, slotIndex) &&
+        !usedPlayersThisSlot.has(pid) &&
+        !usedOfficialsThisSlot.has(pid)
     );
     if (pool.length < 4) {
-      // 若不足四人，放寬連打限制（但仍不能與本時段已被占用的重疊）
-      pool = ids.filter((pid) => !usedThisSlot.has(pid));
+      // 不足四人 → 放寬連打，但仍不能和「本時段球員/裁判」重疊
+      pool = ids.filter(
+        (pid) => !usedPlayersThisSlot.has(pid) && !usedOfficialsThisSlot.has(pid)
+      );
     }
-    // 按打球次數、連打次數排序，再以 seed 輕度打散
+
+    // 依打球次數、連打數排序，前段做部分洗牌
     pool.sort(
       (a, b) =>
         (playCounts.get(a)! - playCounts.get(b)!) ||
@@ -398,33 +375,39 @@ export function generateSchedule(
           for (let l = k + 1; l < pool.length; l++)
             combs.push([pool[i], pool[j], pool[k], pool[l]]);
 
-    const strict: {
-      team1: [string, string];
-      team2: [string, string];
-      ref: string;
-      lj1: string;
-      lj2: string;
-    }[] = [];
-    const soft: typeof strict = [];
+    type Cand = { team1: [string, string]; team2: [string, string]; ref: string; lj1: string; lj2: string; };
+    const strict: Cand[] = [];
+    const soft: Cand[] = [];
 
-    const allowReuse = !!settings.shareOfficialsAcrossCourts;
-    const N = settings.officialsPerCourt ?? 3;
+    // 依設定決定是否允許同一時段跨場重複執法
+    const allowReuseOfficials = !!settings.shareOfficialsAcrossCourts;
+    const desiredN = settings.officialsPerCourt ?? 3;
 
     for (const four of combs) {
       for (const [t1, t2] of candidateTeams(four)) {
         const playing = new Set([...t1, ...t2]);
 
-        // rest：可做執法的人
-        const rest = ids.filter(
-          (x) => !playing.has(x) && (allowReuse ? true : !usedThisSlot.has(x))
-        );
+        // rest：可以擔任執法的人
+        // - 永遠排除：本場上場的四人 + 本時段已上場的球員（避免裁判同時在場上）
+        // - 若不允許跨場共享執法，另外排除：本時段已是裁判的人
+        const rest = ids.filter((x) => {
+          if (playing.has(x)) return false;
+          if (usedPlayersThisSlot.has(x)) return false; // 不能是別場球員
+          if (!allowReuseOfficials && usedOfficialsThisSlot.has(x)) return false; // 規避跨場重複執法
+          return true;
+        });
 
         const hardOK = !wouldExceedPartnerOrOpp(t1, t2, maxMate, maxOpp);
 
-        for (const [r, l1, l2] of feasibleOfficials(rest, N)) {
-          const item = { team1: t1, team2: t2, ref: r, lj1: l1, lj2: l2 };
-          if (hardOK) strict.push(item);
-          else soft.push(item);
+        // 自動降級：N=desiredN → 2 → 1（缺線審時仍可排）
+        let gotAny = false;
+        for (let N = desiredN; N >= 1 && !gotAny; N--) {
+          const fo = feasibleOfficials(rest, N);
+          for (const [r, l1, l2] of fo) {
+            const item: Cand = { team1: t1, team2: t2, ref: r, lj1: l1, lj2: l2 };
+            if (hardOK) strict.push(item); else soft.push(item);
+            gotAny = true;
+          }
         }
       }
     }
@@ -439,30 +422,23 @@ export function generateSchedule(
   const matches: MatchAssignment[] = [];
 
   for (const slot of slots) {
-    const usedThisSlot = new Set<string>();
-    for (let court = 1; court <= courts; court++) {
-      const cands = nextCourtCandidates(slot.idx, usedThisSlot);
-      if (!cands.length) break; // 這個時段排不出更多
-      const m = cands[0]; // 取成本最低者
+    const usedPlayersThisSlot = new Set<string>();
+    const usedOfficialsThisSlot = new Set<string>();
 
-      // 提交統計
+    for (let court = 1; court <= courts; court++) {
+      const cands = nextCourtCandidates(slot.idx, usedPlayersThisSlot, usedOfficialsThisSlot);
+      if (!cands.length) break;
+
+      const m = cands[0];
       commit(m, slot.idx);
 
-      // 寫入 slot 佔位：球員一定佔位；執法視設定決定是否佔位
-      for (const pid of [...m.team1, ...m.team2]) usedThisSlot.add(pid);
-      if (!settings.shareOfficialsAcrossCourts) {
-        for (const pid of [m.ref, m.lj1, m.lj2]) usedThisSlot.add(pid);
-      }
+      // 佔位：球員一定加入 usedPlayers；裁判一定加入 usedOfficials
+      for (const pid of [...m.team1, ...m.team2]) usedPlayersThisSlot.add(pid);
+      for (const pid of [m.ref, m.lj1, m.lj2]) usedOfficialsThisSlot.add(pid);
 
-      // 寫入可顯示的比賽卡
-      const teamA: [Player, Player] = [
-        byId.get(m.team1[0])!,
-        byId.get(m.team1[1])!,
-      ];
-      const teamB: [Player, Player] = [
-        byId.get(m.team2[0])!,
-        byId.get(m.team2[1])!,
-      ];
+      // 組裝輸出
+      const teamA: [Player, Player] = [byId.get(m.team1[0])!, byId.get(m.team1[1])!];
+      const teamB: [Player, Player] = [byId.get(m.team2[0])!, byId.get(m.team2[1])!];
 
       matches.push({
         court,
@@ -552,7 +528,7 @@ export default function SchedulePage() {
     strongLevelThreshold: 7,
     reroll: 0,
     shareOfficialsAcrossCourts: false,
-    officialsPerCourt: 3, // 預設每場需要 3 位執法官
+    officialsPerCourt: 2, // 每場需要 2 位執法官
   }));
 
   // 手動模式（可拖拉交換球員）
@@ -641,6 +617,24 @@ export default function SchedulePage() {
                 <label htmlFor="shareOfficials" className="text-sm">
                   同時段可共用執法
                 </label>
+              </div>
+              {/* 新增：每場需要的裁判人數 */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="officialsPerCourt" className="text-sm whitespace-nowrap">
+                  每場裁判人數
+                </label>
+                <select
+                  id="officialsPerCourt"
+                  className="border rounded px-2 py-1 text-sm"
+                  value={settings.officialsPerCourt ?? 2}
+                  onChange={(e) =>
+                    setSettings({ ...settings, officialsPerCourt: Number(e.target.value) as 1 | 2 | 3 })
+                  }
+                >
+                  <option value={1}>1（僅主審）</option>
+                  <option value={2}>2（主審+1線審）</option>
+                  <option value={3}>3（主審+2線審）</option>
+                </select>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <NumberField label="開始時" value={settings.startHH} min={6} max={22} onChange={(v) => setSettings({ ...settings, startHH: v })} />
