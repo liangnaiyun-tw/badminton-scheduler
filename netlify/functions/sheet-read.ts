@@ -84,6 +84,7 @@ export const handler: Handler = async (event) => {
       const pairB = splitPair(teamBJoin);
 
       const id = String(get(r, "ID","id","比賽ID")) || `m${i + 1}`;
+      const match = String(get(r, "Match","比賽")) || `Match ${i + 1}`;
 
       const courtRaw = get(r, "Court","court","場地");
       const court = courtRaw === "" ? undefined :
@@ -125,6 +126,7 @@ export const handler: Handler = async (event) => {
       return {
         id,
         court,
+        match,
         team1: { a: { id: A1_ID, name: A1_Name, gender: A1_G }, b: { id: A2_ID, name: A2_Name, gender: A2_G } },
         team2: { a: { id: B1_ID, name: B1_Name, gender: B1_G }, b: { id: B2_ID, name: B2_Name, gender: B2_G } },
         referee: { id: Ref_ID, name: Ref_Name, gender: "Other" },

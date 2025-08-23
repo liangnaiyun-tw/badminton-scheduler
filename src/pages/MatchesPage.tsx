@@ -20,6 +20,7 @@ export interface GameScore { team1: number; team2: number }
 export type MatchStatus = "pending" | "live" | "done";
 export interface Match {
   id: string;
+  match: string;
   court?: string | number;
   team1: Team;
   team2: Team;
@@ -482,7 +483,7 @@ export default function MatchesPage() {
                     >
                       <div className="flex items-center justify-between">
                         <h1 className="text-xs md:text-sm text-neutral-400">
-                          Match {i + 1}{m.court ? ` · Court ${m.court}` : ""}
+                          {m.match}{m.court ? ` · Court ${m.court}` : ""}
                         </h1>
                         <h1
                           className={`text-xs md:text-sm ${
