@@ -149,7 +149,7 @@ function CourtPanel({
       {/* Header */}
       <div className="px-5 py-4 border-b border-neutral-800 flex items-center justify-between">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight">Court {courtNo}</h1>
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight">第{courtNo}場地</h1>
           <h1 className="text-base md:text-lg text-neutral-400">共 {list.length} 場</h1>
         </div>
         <div className="flex items-center gap-3">
@@ -485,7 +485,7 @@ export default function MatchesPage() {
                     >
                       <div className="flex items-center justify-between">
                         <h1 className="text-xs md:text-sm text-neutral-400">
-                          {m.match}{m.court ? ` · Court ${m.court}` : ""}
+                          {m.match}{m.court ? ` · 第${m.court}場地` : ""}
                         </h1>
                         <h1
                           className={`text-xs md:text-sm ${
