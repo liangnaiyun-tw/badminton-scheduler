@@ -379,7 +379,7 @@ export default function MatchesPage() {
 
     // 寫回 Google Sheets（失敗也不影響前端流程）
     const payload = {
-      matchId: m.id,
+      matchId: m.match,
       court: m.court,
       team1: `${m.team1.a.name}／${m.team1.b.name}`,
       team2: `${m.team2.a.name}／${m.team2.b.name}`,
