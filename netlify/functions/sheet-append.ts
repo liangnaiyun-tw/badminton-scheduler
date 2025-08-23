@@ -28,7 +28,7 @@ export const handler: Handler = async (event) => {
     if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
 
     const payload = JSON.parse(event.body || "{}");
-    if (!payload.matchId) return { statusCode: 400, body: "matchId is required" };
+    if (!payload.id) return { statusCode: 400, body: "id is required" };
 
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
     if (!spreadsheetId) return { statusCode: 500, body: "Missing GOOGLE_SHEETS_SPREADSHEET_ID" };
@@ -38,8 +38,7 @@ export const handler: Handler = async (event) => {
 
     const sheets = google.sheets({ version: "v4", auth });
     const sheetTitle = getSheetTitle();
-
-    // 1) 讀 B 欄（matchId 欄），找出相同 matchId 的列
+    // 1) 讀 B id 欄），找出相同 id 的列
     const colB = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: `${sheetTitle}!B:B`,
@@ -47,10 +46,10 @@ export const handler: Handler = async (event) => {
     });
     const list: string[] = colB.data.values?.[0] || [];
     const firstCell = (list[0] || "").toString();
-    const startIdx = /^matchid$/i.test(firstCell) ? 1 : 0; // 若第1列是標題「matchId」就略過
+    const startIdx = /^id$/i.test(firstCell) ? 1 : 0; // 若第1列是標題「id」就略過
     let rowNumber = -1;
     for (let i = startIdx; i < list.length; i++) {
-      if (String(list[i]).trim() === String(payload.matchId).trim()) {
+      if (String(list[i]).trim() === String(payload.id).trim()) {
         rowNumber = i + 1; // A1 座標列數（1-based）
         break;
       }
@@ -59,7 +58,8 @@ export const handler: Handler = async (event) => {
     // 2) 準備要寫入的一整列資料（依你的欄位順序）
     const row = [
       new Date().toLocaleString("zh-TW"),
-      payload.matchId ?? "",
+      payload.id ?? "",
+      payload.match ?? "",
       payload.court ?? "",
       payload.team1 ?? "",
       payload.team2 ?? "",
@@ -72,7 +72,7 @@ export const handler: Handler = async (event) => {
 
     // 3) 需要時自動補上表頭（如果整張表目前是空的）
     if (list.length === 0) {
-      const header = ["時間", "matchId", "場地", "隊伍A", "隊伍B", "局數", "A分", "B分", "狀態", "備註"];
+      const header = ["時間", "id", "場次", "場地", "隊伍A", "隊伍B", "局數", "A分", "B分", "狀態", "備註"];
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `${sheetTitle}!A1:${colLetter(header.length)}1`,
@@ -81,7 +81,7 @@ export const handler: Handler = async (event) => {
       });
     }
 
-    // 4) 有找到同 matchId → 覆蓋；否則 → 追加
+    // 4) 有找到同 id → 覆蓋；否則 → 追加
     if (rowNumber > 0) {
       // 覆蓋這一列（從 A 欄到 row 長度對應的最後一欄）
       const endCol = colLetter(row.length);

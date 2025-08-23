@@ -379,6 +379,7 @@ export default function MatchesPage() {
 
     // 寫回 Google Sheets（失敗也不影響前端流程）
     const payload = {
+      id: m.id,
       matchId: m.match,
       court: m.court,
       team1: `${m.team1.a.name}／${m.team1.b.name}`,
@@ -416,7 +417,8 @@ export default function MatchesPage() {
     const maxGames = Math.max(1, ...matches.map(m => m.scores?.length ?? 0));
     const rows = matches.map((m, i) => {
       const base: Record<string, any> = {
-        序號: i + 1,
+        序號: m.id,
+        場次: m.match,
         場地: m.court ?? "",
         隊伍A: `${m.team1.a.name}／${m.team1.b.name}`,
         隊伍B: `${m.team2.a.name}／${m.team2.b.name}`,
