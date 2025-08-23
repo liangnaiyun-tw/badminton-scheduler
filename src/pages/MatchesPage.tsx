@@ -232,14 +232,57 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [scoreInputs, setScoreInputs] = useState<Record<string, { a: string; b: string }>>({});
 
-  const loadFromSheetAndSaveDefault = async () => {
-    const res = await fetch("/.netlify/functions/sheet-read");
-    if (!res.ok) return alert("讀取 Google Sheet 失敗");
-    const data = await res.json();
-    const ms = (data.matches as Match[]) ?? [];
-    setMatches(ms.map(m => ({ status: "pending", scores: [], ...m })));
-    alert(`已從 Google Sheet 載入 ${ms.length} 筆，並存為預設 DEFAULT_MATCHES`);
-  };
+const normalizeCourt = (c: any): string => {
+  const s = String(c ?? "").trim();
+  if (!s) return "";                           // 空值維持空（後面會幫分配）
+  const m = s.match(/\d+/);                    // 允許 "Court 1"、"1號場" 之類
+  return m ? m[0] : s;
+};
+
+const loadFromSheetAndSaveDefault = async () => {
+  const res = await fetch("/.netlify/functions/sheet-read");
+  if (!res.ok) return alert("讀取 Google Sheet 失敗");
+  const data = await res.json();
+  let ms: Match[] = (data.matches as Match[]) ?? [];
+
+  // 1) 正規化 court
+  ms = ms.map(m => ({
+    scores: [],
+    status: "pending",
+    ...m,
+    court: normalizeCourt(m.court),
+  }));
+
+  // 2) 若仍然沒有 court，平均分配到 1 / 2（避免兩邊都空）
+  let toggle = 1;
+  ms = ms.map(m => {
+    if (!m.court) {
+      const assigned = String(toggle);
+      toggle = toggle === 1 ? 2 : 1;
+      return { ...m, court: assigned };
+    }
+    return m;
+  });
+
+  // 3) 每個場地挑第一場標成 live（只有當該場地目前沒有 live 時）
+  const byCourt: Record<string, number> = {};
+  ms = ms.map((m, i) => {
+    const key = String(m.court);
+    if (!byCourt[key]) byCourt[key] = -1;
+    // 記住該場地第一個出現的 index
+    if (byCourt[key] === -1) byCourt[key] = i;
+    return m;
+  });
+  const hasLive = (court: string) => ms.some(m => String(m.court) === court && m.status === "live");
+  for (const c of ["1", "2"]) {
+    if (byCourt[c] >= 0 && !hasLive(c)) {
+      ms[byCourt[c]] = { ...ms[byCourt[c]], status: "live" };
+    }
+  }
+
+  setMatches(ms);
+  alert(`已從 Google Sheet 載入 ${ms.length} 筆（已自動指派場地與預設 LIVE）。`);
+};
 
   useEffect(() => { loadFromSheetAndSaveDefault(); }, []);
 
