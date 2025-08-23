@@ -1,13 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FileSpreadsheet,
-  ChevronLeft,
-  ChevronRight,
   Check,
   Users,
   Gavel,
   Binoculars,
-  PlusCircle,
   Mars,
   Venus,
   UserRound,
@@ -15,7 +12,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-// ========== 型別定義 ==========
+/* ========== 型別定義 ========== */
 export type Gender = "M" | "F" | "Other";
 export interface Player { id: string; name: string; gender: Gender; level?: number }
 export interface Team { a: Player; b: Player }
@@ -34,13 +31,7 @@ export interface Match {
   note?: string;
 }
 
-// ========== 小工具 ==========
-const TeamText = ({ t }: { t: Team }) => (
-  <>
-    <GenderTag p={t.a} /> ／ <GenderTag p={t.b} />
-  </>
-);
-
+/* ========== 小工具 ========== */
 const sumScores = (scores: GameScore[] | undefined) => {
   if (!scores?.length) return { t1: 0, t2: 0 };
   return scores.reduce((acc, g) => ({ t1: acc.t1 + g.team1, t2: acc.t2 + g.team2 }), { t1: 0, t2: 0 });
@@ -59,7 +50,7 @@ const winnerLabel = (m: Match): string | null => {
   return w.a > w.b ? `${m.team1.a.name}／${m.team1.b.name}` : `${m.team2.a.name}／${m.team2.b.name}`;
 };
 
-// 性別顯示：顏色＋圖示（男=藍，女=粉，Other=灰＋中性 icon）
+/* ========== 性別徽章（名字也用 h1） ========== */
 function genderMeta(g: Gender) {
   switch (g) {
     case "M":
@@ -74,704 +65,189 @@ function GenderTag({ p, large = false }: { p: Player; large?: boolean }) {
   const { Icon, cls } = genderMeta(p.gender);
   return (
     <span
-      className={`inline-flex items-center gap-2 border ${cls} rounded-full px-2.5 ${large ? "py-1.5 text-base" : "py-0.5 text-xs"}`}
+      className={`inline-flex items-center gap-2 border ${cls} rounded-full px-3 ${large ? "py-2" : "py-1"}`}
       title={p.gender === "M" ? "男" : p.gender === "F" ? "女" : "其他"}
     >
-      <Icon className={large ? "h-4 w-4" : "h-3.5 w-3.5"} />
-      <span className="font-medium">{p.name}</span>
+      <Icon className={large ? "h-5 w-5" : "h-4 w-4"} />
+      <h1 className={`font-medium ${large ? "text-xl md:text-2xl" : "text-base md:text-lg"}`}>{p.name}</h1>
     </span>
   );
 }
+const TeamText = ({ t }: { t: Team }) => (
+  <>
+    <GenderTag p={t.a} /> <h1 className="inline opacity-60 mx-1">／</h1> <GenderTag p={t.b} />
+  </>
+);
 
+/* ========== 場地面板（同時顯示兩個） ========== */
+function CourtPanel({
+  courtNo,
+  matches,
+  onSubmitScore,
+  onMarkDone,
+  scoreInputs,
+  setScoreInputs,
+}: {
+  courtNo: number;
+  matches: Match[];
+  onSubmitScore: (m: Match, a: number, b: number) => void;
+  onMarkDone: (m: Match) => void;
+  scoreInputs: Record<string, { a: string; b: string }>;
+  setScoreInputs: React.Dispatch<React.SetStateAction<Record<string, { a: string; b: string }>>>;
+}) {
+  // 抓該場地的所有場次
+  const list = useMemo(
+    () => matches.filter(m => String(m.court ?? "") === String(courtNo)),
+    [matches, courtNo]
+  );
 
+  // 依狀態排序，挑一個要「主顯示」的
+  const current = useMemo(() => {
+    const order = (s: MatchStatus | undefined) => (s === "live" ? 0 : s === "pending" ? 1 : 2);
+    return [...list].sort((a, b) => order(a.status) - order(b.status))[0];
+  }, [list]);
 
-// ========== 主元件 ==========
+  // 若沒有場次
+  if (!current) {
+    return (
+      <div className="rounded-3xl border border-neutral-800 bg-neutral-900/50 p-6">
+        <h1 className="text-3xl md:text-4xl font-black tracking-tight">Court {courtNo}</h1>
+        <h1 className="text-lg md:text-xl text-neutral-400 mt-3">目前沒有賽事</h1>
+      </div>
+    );
+  }
+
+  const input = scoreInputs[current.id] ?? { a: "", b: "" };
+  const last = current.scores?.[current.scores.length - 1];
+
+  return (
+    <div className="rounded-3xl border border-neutral-800 bg-neutral-900/50 overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-neutral-800 flex items-center justify-between">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight">Court {courtNo}</h1>
+          <h1 className="text-base md:text-lg text-neutral-400">共 {list.length} 場</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Users className="h-5 w-5 text-neutral-400" />
+          <h1 className={`text-base md:text-lg ${
+            current.status === "done" ? "text-emerald-400" : current.status === "live" ? "text-blue-400" : "text-neutral-400"
+          }`}>
+            {current.status === "done" ? "已結束" : current.status === "live" ? "進行中" : "未開始"}
+          </h1>
+        </div>
+      </div>
+
+      {/* 主要卡片 */}
+      <div className="p-6 md:p-8 grid gap-6">
+        {/* 對戰雙方 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-2xl border border-neutral-800 p-4">
+            <h1 className="text-sm md:text-base text-neutral-400">隊伍 A</h1>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <GenderTag p={current.team1.a} large />
+              <GenderTag p={current.team1.b} large />
+            </div>
+          </div>
+          <div className="rounded-2xl border border-neutral-800 p-4">
+            <h1 className="text-sm md:text-base text-neutral-400">隊伍 B</h1>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <GenderTag p={current.team2.a} large />
+              <GenderTag p={current.team2.b} large />
+            </div>
+          </div>
+        </div>
+
+        {/* 裁判資訊 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
+            <div className="flex items-center gap-2"><Gavel className="h-5 w-5 text-neutral-400" /><h1 className="text-sm md:text-base text-neutral-400">主審</h1></div>
+            <div className="mt-2"><GenderTag p={current.referee} /></div>
+          </div>
+          <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
+            <div className="flex items-center gap-2"><Binoculars className="h-5 w-5 text-neutral-400" /><h1 className="text-sm md:text-base text-neutral-400">線審 1</h1></div>
+            <div className="mt-2"><GenderTag p={current.lj1} /></div>
+          </div>
+          <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
+            <div className="flex items-center gap-2"><Binoculars className="h-5 w-5 text-neutral-400" /><h1 className="text-sm md:text-base text-neutral-400">線審 2</h1></div>
+            <div className="mt-2"><GenderTag p={current.lj2} /></div>
+          </div>
+        </div>
+
+        {/* 最新比分/勝方 */}
+        <div className="flex items-center gap-3">
+          <h1 className="text-base md:text-lg text-neutral-400">最新比分：</h1>
+          <h1 className="text-base md:text-lg">{last ? `A ${last.team1} : ${last.team2} B` : "—"}</h1>
+          <h1 className="text-base md:text-lg text-neutral-400 ml-4">勝方：</h1>
+          <h1 className="text-base md:text-lg">{winnerLabel(current) ?? "—"}</h1>
+        </div>
+
+        {/* 分數輸入 */}
+        <div className="grid gap-4">
+          <div className="flex flex-col md:flex-row md:items-end gap-3">
+            <div className="flex-1">
+              <h1 className="block text-sm md:text-base text-neutral-400 mb-1">本局分數 — A 隊</h1>
+              <input
+                value={input.a}
+                onChange={e => setScoreInputs(s => ({ ...s, [current.id]: { ...(s[current.id] ?? {a:"",b:""}), a: e.target.value.replace(/[^0-9]/g, "") } }))}
+                className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="0"
+              />
+            </div>
+            <div className="flex-1">
+              <h1 className="block text-sm md:text-base text-neutral-400 mb-1">本局分數 — B 隊</h1>
+              <input
+                value={input.b}
+                onChange={e => setScoreInputs(s => ({ ...s, [current.id]: { ...(s[current.id] ?? {a:"",b:""}), b: e.target.value.replace(/[^0-9]/g, "") } }))}
+                className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="0"
+              />
+            </div>
+            <button
+              onClick={() => onSubmitScore(current, Number(input.a), Number(input.b))}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2"
+              title="對戰結束"
+            >
+              <Check className="h-5 w-5" />
+              <h1 className="text-base md:text-lg">對戰結束</h1>
+            </button>
+          </div>
+          <div>
+            <button
+              onClick={() => onMarkDone(current)}
+              className="inline-flex items-center gap-2 rounded-xl border border-neutral-700 hover:bg-neutral-800 px-4 py-2"
+            >
+              <Trophy className="h-5 w-5 text-yellow-400" />
+              <h1 className="text-base md:text-lg">標記為結束（不輸入分數）</h1>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ========== 主頁面：左側清單 + 右側兩場地並排 ========== */
 export default function MatchesPage() {
-  const [matches, setMatches] = useState<Match[]>([
-    {
-      "id": "場次一",
-      "court": "場次一",
-      "team1": {
-        "a": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        },
-        "b": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        },
-        "b": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        }
-      },
-      "referee": {
-        "id": "慶",
-        "name": "慶",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "哲",
-        "name": "哲",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "懋",
-        "name": "懋",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次二",
-      "court": "場次二",
-      "team1": {
-        "a": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        },
-        "b": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        },
-        "b": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "源",
-        "name": "源",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "宇",
-        "name": "宇",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "勛",
-        "name": "勛",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次三",
-      "court": "場次三",
-      "team1": {
-        "a": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        },
-        "b": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        },
-        "b": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "梁",
-        "name": "梁",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "湘",
-        "name": "湘",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "宇",
-        "name": "宇",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次四",
-      "court": "場次四",
-      "team1": {
-        "a": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        },
-        "b": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        },
-        "b": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        }
-      },
-      "referee": {
-        "id": "哲",
-        "name": "哲",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "懋",
-        "name": "懋",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "勛",
-        "name": "勛",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次五",
-      "court": "場次五",
-      "team1": {
-        "a": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        },
-        "b": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        },
-        "b": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "源",
-        "name": "源",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "慶",
-        "name": "慶",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "湘",
-        "name": "湘",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次六",
-      "court": "場次六",
-      "team1": {
-        "a": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        },
-        "b": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        },
-        "b": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "慶",
-        "name": "慶",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "懋",
-        "name": "懋",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "勛",
-        "name": "勛",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次七",
-      "court": "場次七",
-      "team1": {
-        "a": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        },
-        "b": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        },
-        "b": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        }
-      },
-      "referee": {
-        "id": "梁",
-        "name": "梁",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "源",
-        "name": "源",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "哲",
-        "name": "哲",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次八",
-      "court": "場次八",
-      "team1": {
-        "a": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        },
-        "b": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        },
-        "b": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "哲",
-        "name": "哲",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "湘",
-        "name": "湘",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "慶",
-        "name": "慶",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次九",
-      "court": "場次九",
-      "team1": {
-        "a": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        },
-        "b": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        },
-        "b": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        }
-      },
-      "referee": {
-        "id": "哲",
-        "name": "哲",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "懋",
-        "name": "懋",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "勛",
-        "name": "勛",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次十",
-      "court": "場次十",
-      "team1": {
-        "a": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        },
-        "b": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        },
-        "b": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "梁",
-        "name": "梁",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "源",
-        "name": "源",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "宇",
-        "name": "宇",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次十一",
-      "court": "場次十一",
-      "team1": {
-        "a": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        },
-        "b": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        },
-        "b": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "梁",
-        "name": "梁",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "湘",
-        "name": "湘",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "慶",
-        "name": "慶",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次十二",
-      "court": "場次十二",
-      "team1": {
-        "a": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        },
-        "b": {
-          "id": "梁",
-          "name": "梁",
-          "gender": "F"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        },
-        "b": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "源",
-        "name": "源",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "哲",
-        "name": "哲",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "勛",
-        "name": "勛",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次十三",
-      "court": "場次十三",
-      "team1": {
-        "a": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        },
-        "b": {
-          "id": "源",
-          "name": "源",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "懋",
-          "name": "懋",
-          "gender": "M"
-        },
-        "b": {
-          "id": "勛",
-          "name": "勛",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "梁",
-        "name": "梁",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "宇",
-        "name": "宇",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "慶",
-        "name": "慶",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    },
-    {
-      "id": "場次十四",
-      "court": "場次十四",
-      "team1": {
-        "a": {
-          "id": "宇",
-          "name": "宇",
-          "gender": "M"
-        },
-        "b": {
-          "id": "慶",
-          "name": "慶",
-          "gender": "M"
-        }
-      },
-      "team2": {
-        "a": {
-          "id": "湘",
-          "name": "湘",
-          "gender": "F"
-        },
-        "b": {
-          "id": "哲",
-          "name": "哲",
-          "gender": "M"
-        }
-      },
-      "referee": {
-        "id": "源",
-        "name": "源",
-        "gender": "Other"
-      },
-      "lj1": {
-        "id": "懋",
-        "name": "懋",
-        "gender": "Other"
-      },
-      "lj2": {
-        "id": "勛",
-        "name": "勛",
-        "gender": "Other"
-      },
-      "status": "pending",
-      "scores": [],
-      "note": ""
-    }
-  ]);
-  const [idx, setIdx] = useState(0);
-  const cur = matches[idx];
-  const prev = matches[idx - 1];
-  const next = matches[idx + 1];
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [scoreInputs, setScoreInputs] = useState<Record<string, { a: string; b: string }>>({});
 
   const loadFromSheetAndSaveDefault = async () => {
-    const res = await fetch("/.netlify/functions/sheet-read"); // 你前面做好的讀表 function
+    const res = await fetch("/.netlify/functions/sheet-read");
     if (!res.ok) return alert("讀取 Google Sheet 失敗");
     const data = await res.json();
     const ms = (data.matches as Match[]) ?? [];
-
-    // 同步畫面（把 state 換成這份）
     setMatches(ms.map(m => ({ status: "pending", scores: [], ...m })));
-
     alert(`已從 Google Sheet 載入 ${ms.length} 筆，並存為預設 DEFAULT_MATCHES`);
   };
 
-  // 切換場次時標記狀態
-  useEffect(() => {
-    setMatches(ms => ms.map((m, i) => (i === idx ? { ...m, status: m.status === "done" ? "done" : "live" } : m)));
-  }, [idx]);
+  useEffect(() => { loadFromSheetAndSaveDefault(); }, []);
 
-  useEffect(() => {
-     loadFromSheetAndSaveDefault();
-  }, []);
-
-  // 分數輸入
-  const [t1Score, setT1Score] = useState<string>("");
-  const [t2Score, setT2Score] = useState<string>("");
-
-  const addGameScore = () => {
-    const a = Number.parseInt(t1Score);
-    const b = Number.parseInt(t2Score);
+  /* 提交分數（兩場地共用） */
+  const submitScore = (m: Match, a: number, b: number) => {
     if (!Number.isFinite(a) || !Number.isFinite(b)) return alert("請輸入數字分數");
-
-    setMatches(ms => ms.map((m, i) => (i === idx ? { ...m, status: "done", scores: [{ team1: a, team2: b }] } : m)));
-
-    // ✅ 呼叫 Netlify Function 寫入 Google Sheets
-    const m = matches[idx];
+    setMatches(ms => ms.map(x => x.id === m.id ? { ...x, status: "done", scores: [{ team1: a, team2: b }] } : x));
+    // 寫回 Google Sheets
     const payload = {
       matchId: m.id,
       court: m.court,
@@ -788,22 +264,16 @@ export default function MatchesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).catch((e) => console.error("sheet append failed", e));
-
-    setT1Score("");
-    setT2Score("");
+    setScoreInputs(s => ({ ...s, [m.id]: { a: "", b: "" } }));
   };
 
-  const endMatch = () => {
-    console.log("標記對戰結束", cur);
-    if (!cur) return;
-    if (!cur.scores || cur.scores.length === 0) {
+  const markDone = (m: Match) => {
+    if (!m.scores || m.scores.length === 0) {
       const ok = confirm("尚未輸入任何局分，仍要標記為結束嗎？");
       if (!ok) return;
     }
-    setMatches(ms => ms.map((m, i) => (i === idx ? { ...m, status: "done" } : m)));
+    setMatches(ms => ms.map(x => x.id === m.id ? { ...x, status: "done" } : x));
   };
-
-  const go = (d: number) => setIdx(i => Math.min(Math.max(0, i + d), matches.length - 1));
 
   const exportExcel = () => {
     const maxGames = Math.max(1, ...matches.map(m => m.scores?.length ?? 0));
@@ -838,178 +308,79 @@ export default function MatchesPage() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      {/* 置中容器 */}
       <div className="w-full p-4 md:p-8">
-
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] rounded-3xl border border-neutral-800 bg-neutral-900/50 overflow-hidden shadow-2xl">
-          {/* 側邊：場次清單 */}
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] rounded-3xl border border-neutral-800 bg-neutral-900/50 overflow-hidden shadow-2xl">
+          {/* 側邊：場次清單（字全用 h1） */}
           <aside className="border-b lg:border-b-0 lg:border-r border-neutral-800 bg-neutral-900/40 p-4 overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-neutral-400">場次列表</div>
-              <button onClick={exportExcel} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm" title="匯出 Excel">
-                <FileSpreadsheet className="h-4 w-4" /> 匯出
+              <h1 className="text-sm md:text-base text-neutral-400">場次列表</h1>
+              <button
+                onClick={exportExcel}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5"
+                title="匯出 Excel"
+              >
+                <FileSpreadsheet className="h-5 w-5" />
+                <h1 className="text-sm md:text-base">匯出</h1>
               </button>
             </div>
+
             <ul className="space-y-2">
               {matches.map((m, i) => {
-                const sets = setWins(m.scores);
-                const sum = sumScores(m.scores);
-                const last = (m.scores && m.scores.length > 0) ? m.scores[m.scores.length - 1] : null;
-                const doneInfo = m.status === "done" ? (
-                  <div className="mt-1 text-[12px] text-neutral-300 flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/20 text-emerald-300 px-2 py-0.5 border border-emerald-700">
-                      <Trophy className="w-4 h-4 text-yellow-400" /> {winnerLabel(m) || "—"}
-                    </span>
-                    {last ? (
-                      <span className="opacity-90">比分 A {last.team1} : {last.team2} B</span>
-                    ) : (
-                      <span className="opacity-50">未輸入分數</span>
-                    )}
-                  </div>
-                ) : null;
+                const last = m.scores?.[m.scores.length - 1];
                 return (
                   <li key={m.id}>
-                    <button
-                      onClick={() => setIdx(i)}
-                      className={`w-full text-left rounded-xl border px-3 py-2 transition ${i === idx ? "border-blue-500 bg-blue-500/10" : "border-neutral-800 hover:bg-neutral-800/50"}`}
-                    >
-                      <div className="flex items-center justify-between text-xs text-neutral-400">
-                        <span>Match {i + 1}{m.court ? ` · Court ${m.court}` : ""}</span>
-                        <span className={m.status === "done" ? "text-emerald-400" : m.status === "live" ? "text-blue-400" : "text-neutral-400"}>
+                    <div className="w-full text-left rounded-xl border border-neutral-800 hover:bg-neutral-800/50 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <h1 className="text-xs md:text-sm text-neutral-400">
+                          Match {i + 1}{m.court ? ` · Court ${m.court}` : ""}
+                        </h1>
+                        <h1 className={`text-xs md:text-sm ${
+                          m.status === "done" ? "text-emerald-400" : m.status === "live" ? "text-blue-400" : "text-neutral-400"
+                        }`}>
                           {m.status === "done" ? "已結束" : m.status === "live" ? "進行中" : "未開始"}
-                        </span>
+                        </h1>
                       </div>
-                      <div className="mt-1 text-sm">
-                        <TeamText t={m.team1} /> <span className="opacity-60">vs</span> <TeamText t={m.team2} />
+                      <div className="mt-1">
+                        <TeamText t={m.team1} /> <h1 className="inline opacity-60 mx-1">vs</h1> <TeamText t={m.team2} />
                       </div>
-                      {doneInfo}
-                    </button>
+                      {m.status === "done" && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/20 text-emerald-300 px-2 py-0.5 border border-emerald-700">
+                            <Trophy className="w-4 h-4 text-yellow-400" />
+                            <h1 className="text-xs md:text-sm">{winnerLabel(m) || "—"}</h1>
+                          </span>
+                          <h1 className="text-[12px] md:text-sm opacity-90">
+                            {last ? `比分 A ${last.team1} : ${last.team2} B` : "未輸入分數"}
+                          </h1>
+                        </div>
+                      )}
+                    </div>
                   </li>
                 );
               })}
             </ul>
           </aside>
 
-          {/* 右側：詳細區 */}
-          <div className="p-6 md:p-10">
-             <div className="flex items-center justify-between gap-2 py-1">
-              <div className="flex items-center gap-2">
-                <button onClick={() => go(-1)} disabled={!prev} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
-                  <ChevronLeft className="h-4 w-4" /> 上一場
-                </button>
-                <button onClick={() => go(+1)} disabled={!next} className="inline-flex items-center gap-1 rounded-xl border border-neutral-800 px-3 py-2 disabled:opacity-40">
-                  下一場 <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="text-sm text-neutral-400">
-                {prev ? <>上一場：<span className="text-neutral-200">{prev.team1.a.name}／{prev.team1.b.name} vs {prev.team2.a.name}／{prev.team2.b.name}</span></> : <span>無上一場</span>}
-                <span className="mx-3 opacity-40">|</span>
-                {next ? <>下一場：<span className="text-neutral-200">{next.team1.a.name}／{next.team1.b.name} vs {next.team2.a.name}／{next.team2.b.name}</span></> : <span>無下一場</span>}
-              </div>
+          {/* 右側：兩個場地同時顯示 */}
+          <div className="p-6 md:p-8">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <CourtPanel
+                courtNo={1}
+                matches={matches}
+                onSubmitScore={submitScore}
+                onMarkDone={markDone}
+                scoreInputs={scoreInputs}
+                setScoreInputs={setScoreInputs}
+              />
+              <CourtPanel
+                courtNo={2}
+                matches={matches}
+                onSubmitScore={submitScore}
+                onMarkDone={markDone}
+                scoreInputs={scoreInputs}
+                setScoreInputs={setScoreInputs}
+              />
             </div>
-
-            {cur ? (
-              <div className="rounded-3xl border border-neutral-800 bg-neutral-900/40 p-6 md:p-8 grid gap-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-neutral-400">COURT</span>
-                    <span className="text-3xl md:text-5xl font-black tracking-tight">{cur.court ?? "-"}</span>
-                    <div className="ml-4 inline-flex items-center gap-2 rounded-full bg-neutral-800/60 px-3 py-1 text-sm">
-                      <Users className="h-4 w-4" /> Match {idx + 1} / {matches.length}
-                    </div>
-                  </div>
-                  <div className="text-sm">
-                    <span className={cur.status === "done" ? "text-emerald-400" : cur.status === "live" ? "text-blue-400" : "text-neutral-400"}>
-                      {cur.status === "done" ? "已結束" : cur.status === "live" ? "進行中" : "未開始"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* 隊伍顯示（含性別 Icon / 顏色） */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="rounded-2xl border border-neutral-800 p-4">
-                    <div className="text-neutral-400 text-xs">隊伍 A</div>
-                    <div className="mt-2 flex flex-wrap gap-3">
-                      <GenderTag p={cur.team1.a} large />
-                      <GenderTag p={cur.team1.b} large />
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-neutral-800 p-4">
-                    <div className="text-neutral-400 text-xs">隊伍 B</div>
-                    <div className="mt-2 flex flex-wrap gap-3">
-                      <GenderTag p={cur.team2.a} large />
-                      <GenderTag p={cur.team2.b} large />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 裁判資訊（含性別 Icon / 顏色） */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
-                    <div className="flex items-center gap-2 text-neutral-400 text-xs"><Gavel className="h-4 w-4" /> 主審</div>
-                    <div className="mt-2"><GenderTag p={cur.referee} /></div>
-                  </div>
-                  <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
-                    <div className="flex items-center gap-2 text-neutral-400 text-xs"><Binoculars className="h-4 w-4" /> 線審 1</div>
-                    <div className="mt-2"><GenderTag p={cur.lj1} /></div>
-                  </div>
-                  <div className="rounded-2xl border border-neutral-800 p-4 bg-neutral-900/50">
-                    <div className="flex items-center gap-2 text-neutral-400 text-xs"><Binoculars className="h-4 w-4" /> 線審 2</div>
-                    <div className="mt-2"><GenderTag p={cur.lj2} /></div>
-                  </div>
-                </div>
-
-                {/* 分數區 */}
-                <div className="grid gap-4">
-                  <div className="flex flex-col md:flex-row md:items-end gap-3">
-                    <div className="flex-1">
-                      <label className="block text-sm text-neutral-400 mb-1">本局分數 — A 隊</label>
-                      <input value={t1Score} onChange={e => setT1Score(e.target.value.replace(/[^0-9]/g, ""))}
-                        className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600" placeholder="0" />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-sm text-neutral-400 mb-1">本局分數 — B 隊</label>
-                      <input value={t2Score} onChange={e => setT2Score(e.target.value.replace(/[^0-9]/g, ""))}
-                        className="w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600" placeholder="0" />
-                    </div>
-                    {/* <button onClick={addGameScore} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2">
-                  <PlusCircle className="h-4 w-4"/> 新增一局
-                </button> */}
-                    <button onClick={addGameScore} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2">
-                      <Check className="h-4 w-4" /> 對戰結束
-                    </button>
-                  </div>
-
-                  {/* <div className="overflow-x-auto">
-                <table className="min-w-full text-sm border-separate border-spacing-y-2">
-                  <thead className="text-neutral-400">
-                    <tr>
-                      <th className="text-left px-3">局</th>
-                      <th className="text-left px-3">A隊</th>
-                      <th className="text-left px-3">B隊</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(cur.scores ?? []).map((g, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-2">第 {i + 1} 局</td>
-                        <td className="px-3 py-2">{g.team1}</td>
-                        <td className="px-3 py-2">{g.team2}</td>
-                      </tr>
-                    ))}
-                    {(!cur.scores || cur.scores.length === 0) && (
-                      <tr>
-                        <td className="px-3 py-2 text-neutral-500" colSpan={3}>尚未輸入任何局分</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div> */}
-                </div>
-              </div>
-            ) : (
-              <div className="text-neutral-400">沒有可顯示的場次</div>
-            )}
           </div>
         </div>
       </div>
