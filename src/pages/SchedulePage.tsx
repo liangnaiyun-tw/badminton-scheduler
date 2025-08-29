@@ -555,7 +555,7 @@ export default function SchedulePage() {
     strongLevelThreshold: 7,
     reroll: 0,
     shareOfficialsAcrossCourts: false,
-    officialsPerCourt: 2, // 每場需要 2 位執法官
+    officialsPerCourt: 3, // 每場需要 2 位執法官
 
   }));
 
