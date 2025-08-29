@@ -82,6 +82,12 @@ type Settings = {
   shareOfficialsAcrossCourts?: boolean; // 新增：是否允許同時段跨場共享執法
   // 每場需要的執法人數（1=只主審、2=主審+1線審、3=主審+2線審）
   officialsPerCourt?: 1 | 2 | 3;
+
+  // ＝＝ 新增：實力差偏好設定（預設 ±2 內優先）＝＝
+  preferredLevelGap?: number; // 預設 2：對手總強度差 ≤ 2 視為理想
+  levelGapBonus?: number; // 預設 6：落在區間內給負分（加權偏好）
+  levelGapPenalty?: number; // 預設 12：超出區間後，二次方懲罰係數
+  levelAggregation?: "sum" | "avg"; // 預設 "sum"：隊伍強度用兩人level相加
 };
 
 /* =========================
@@ -332,6 +338,13 @@ export function generateSchedule(
     });
   }
 
+  function teamStrength(ids: [string, string], byId: Map<string, Player>, mode: "sum" | "avg") {
+    const a = byId.get(ids[0])!, b = byId.get(ids[1])!;
+    const la = a.level ?? 1, lb = b.level ?? 1;
+    return mode === "avg" ? (la + lb) / 2 : (la + lb);
+  }
+
+
   // 主函式：取下一個可放入此場地的候選（考慮「不能讓裁判下場打球」）
   function nextCourtCandidates(
     slotIndex: number,
@@ -387,6 +400,13 @@ export function generateSchedule(
       for (const [t1, t2] of candidateTeams(four)) {
         const playing = new Set([...t1, ...t2]);
 
+        const mode = settings.levelAggregation ?? "sum";
+        const pref = settings.preferredLevelGap ?? 2;
+
+        const s1 = teamStrength(t1, byId, mode);
+        const s2 = teamStrength(t2, byId, mode);
+        const diff = Math.abs(s1 - s2);
+
         // rest：可以擔任執法的人
         // - 永遠排除：本場上場的四人 + 本時段已上場的球員（避免裁判同時在場上）
         // - 若不允許跨場共享執法，另外排除：本時段已是裁判的人
@@ -397,6 +417,8 @@ export function generateSchedule(
           return true;
         });
 
+        // 先把「同伴/對手不超限」與「落在 ±pref」的，塞進 strict；否則先記到 soft
+        const within = diff <= pref;
         const hardOK = !wouldExceedPartnerOrOpp(t1, t2, maxMate, maxOpp);
 
         // 自動降級：N=desiredN → 2 → 1（缺線審時仍可排）
@@ -405,7 +427,12 @@ export function generateSchedule(
           const fo = feasibleOfficials(rest, N);
           for (const [r, l1, l2] of fo) {
             const item: Cand = { team1: t1, team2: t2, ref: r, lj1: l1, lj2: l2 };
-            if (hardOK) strict.push(item); else soft.push(item);
+
+            if (hardOK && within) {
+              strict.push(item);
+            } else {
+              soft.push(item);
+            }
             gotAny = true;
           }
         }
@@ -511,10 +538,10 @@ function LevelPills({ value, onChange, disabled }: { value?: Level; onChange: (l
 export default function SchedulePage() {
   const [players, setPlayers] = useState<Player[]>(() => samplePlayers());
   const [settings, setSettings] = useState<Settings>(() => ({
-    courts: 2,
+    courts: 1,
     slotMinsLong: 12,
     slotMinsShort: 8,
-    shortMatchThreshold: 7,
+    shortMatchThreshold: 8,
     preferMixed: true,
     dateISO: new Date().toISOString().slice(0, 10),
     startHH: 10,
@@ -529,6 +556,7 @@ export default function SchedulePage() {
     reroll: 0,
     shareOfficialsAcrossCourts: false,
     officialsPerCourt: 2, // 每場需要 2 位執法官
+
   }));
 
   // 手動模式（可拖拉交換球員）
@@ -884,20 +912,23 @@ function exportScheduleCSV(matches: MatchAssignment[]) {
 /* 範例資料 */
 function samplePlayers(): Player[] {
   const base: Array<{ name: string; gender: Gender; level: Level }> = [
-    { name: "宇", gender: "M", level: 5 },
-    { name: "哲", gender: "M", level: 6 },
-    { name: "志", gender: "M", level: 7 },
-    { name: "任", gender: "M", level: 7 },
-    { name: "源", gender: "M", level: 5 },
     { name: "梁", gender: "F", level: 6 },
     { name: "慶", gender: "M", level: 7 },
-    { name: "懋", gender: "M", level: 8 },
-    { name: "澤", gender: "M", level: 3 },
-    { name: "尼", gender: "F", level: 9 },
-    { name: "湘", gender: "F", level: 3 },
-    { name: "珠", gender: "F", level: 5 },
-    { name: "菱", gender: "F", level: 5 }
-    // { name: "勛", gender: "M", level: 8 },
+    { name: "宇", gender: "M", level: 5 },
+    { name: "志", gender: "M", level: 7 },
+    { name: "江", gender: "F", level: 4 },
+    { name: "勛", gender: "M", level: 8 },
+    { name: "源", gender: "M", level: 5 },
+    { name: "強", gender: "M", level: 6 }
+    // { name: "哲", gender: "M", level: 6 },
+    // { name: "任", gender: "M", level: 7 },
+    // { name: "懋", gender: "M", level: 8 },
+    // { name: "澤", gender: "M", level: 3 },
+    // { name: "尼", gender: "F", level: 9 },
+    // { name: "湘", gender: "F", level: 3 },
+    // { name: "珠", gender: "F", level: 5 },
+    // { name: "菱", gender: "F", level: 5 },
+    // { name: "欣", gender: "F", level: 1 },
 
   ];
   return base.map((b) => ({ id: uid(), name: b.name, selected: true, skill: b.level, level: b.level, gender: b.gender }));
