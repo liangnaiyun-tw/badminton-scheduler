@@ -1,46 +1,535 @@
 import React, { useEffect, useMemo, useState } from "react";
-const lv = (level ?? 1) as Level; // fallback
-const info = LEVEL_INFO[lv];
-const [open, setOpen] = useState(false);
-return (
-<div className="relative inline-block">
-<button type="button" aria-haspopup="dialog" aria-expanded={open}
-aria-label={`查看 ${levelLabel(lv)} 說明`} onClick={() => setOpen(o => !o)} onBlur={() => setOpen(false)}
-className={`ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border text-sky-600 border-sky-300 hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-300 ${open ? "bg-sky-50" : ""}`}
-title={`${levelLabel(lv)}｜${info.title}`}
->
-<InformationCircleIcon className="h-4 w-4" />
-</button>
-{open && (
-<div role="dialog" className="absolute z-30 left-1/2 -translate-x-1/2 mt-2 w-72 rounded-xl border bg-white p-3 shadow">
-<div className="text-sm font-medium">{levelLabel(lv)}｜{info.title}</div>
-<div className="mt-1 text-xs text-slate-600 leading-relaxed">{info.desc}</div>
-</div>
-)}
-</div>
-);
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
+
+/* =========================
+ *  基本型別
+ * ========================= */
+const genders = ["M", "F", "Other"] as const;
+type Gender = typeof genders[number];
+
+/* ---- Level / Skill (1–12) 與說明 ---- */
+export type Level = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+type Skill = Level; // skill 也走 1–12
+
+const clampLevel = (n: number): Level => (n < 1 ? 1 : n > 12 ? 12 : (n as Level));
+const levelLabel = (lv: Level) => `Lv.${lv}`;
+
+/** 參考台灣羽球推廣協會分級（精簡版 1–12） */
+const LEVEL_INFO: Record<Level, { title: string; desc: string }> = {
+  1: { title: "新手階", desc: "剛接觸規則與禮儀，基本發球/回球成功率較低。" },
+  2: { title: "新手階", desc: "能在中場以平抽/高球往返約10拍，發球成功率約半數。" },
+  3: { title: "新手階", desc: "定點長球可到半場～2/3場地，發球成功率提升（約8成）。" },
+  4: { title: "初階", desc: "握拍與步伐較正確；長球男可至後場、女可到中後場；可做簡單吊/挑/殺。" },
+  5: { title: "初階", desc: "攻防較穩，可運用吊、挑、放、抽等技術，準確度與穩定度提升。" },
+  6: { title: "初中階", desc: "步伐順暢；能後場進攻與網前變化；偶有非受迫失誤；一般球團中下段位。" },
+  7: { title: "初中階", desc: "殺/切/勾能定點或變向；攻守有概念，準確率約7成；具初步防守能力。" },
+  8: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  9: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  10: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  11: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" },
+  12: { title: "中階", desc: "具基本戰術與輪轉；切、殺、吊等技術穩定度提高，防守開始帶變化。" }
+};
+
+/** 顏色分帶（1–3 綠、4–6 粉、7–8 黃、9-12 藍） */
+const levelBand = (lv: Level) => {
+  let color = "#22c55e"; // 1–3 綠
+  if (lv >= 4 && lv <= 6) color = "#ec4899"; // 4–6 粉
+  if (lv >= 7 && lv <= 8) color = "#f59e0b"; // 7–8 黃
+  if (lv >= 9 && lv <= 12) color = "#3b82f6"; // 9–12 藍 (可自行換色)
+  return { title: LEVEL_INFO[lv].title, color };
+
+};
+
+/* =========================
+ *  資料型別
+ * ========================= */
+
+type Player = {
+  id: string;     // 唯一鍵（顯示用請看 name）
+  name: string;   // 顯示名稱
+  gender: Gender;
+  level?: Level;  // 允許舊資料缺值，啟動時會校正
+  skill?: Skill;  // = level（保留兼容）
+  selected: boolean;
+};
+
+type MatchAssignment = {
+  court: number;
+  slotIndex: number;
+  start: Date;
+  end: Date;
+  teams: [Player[], Player[]];
+  officials: { umpire: Player; line1: Player; line2: Player };
+};
+
+type Settings = {
+  courts: number;
+  slotMinsLong: number;
+  slotMinsShort: number;
+  shortMatchThreshold: number; // 當 players > courts×此值 用短局
+  preferMixed: boolean;
+  dateISO: string;
+  startHH: number;
+  startMM: number;
+  endHH: number;
+  endMM: number;
+  maxSameTeammateTogether?: number; // 預設 2（同夥伴最多 2 次 = 僅重複一次）
+  maxSameOpponent?: number;         // 預設 2（同對手最多 2 次）
+  maxConsecutivePlays?: number;     // 預設 2（最多連打兩場）
+  strongFemaleAsMale?: boolean;     // 預設 true（混排判定用）
+  strongLevelThreshold?: Level;     // 預設 7（>=7 的女生可視為男）
+  reroll?: number;                  // 每按一次重新隨機，改變 seed
+  shareOfficialsAcrossCourts?: boolean; // 新增：是否允許同時段跨場共享執法
+  // 每場需要的執法人數（1=只主審、2=主審+1線審、3=主審+2線審）
+  officialsPerCourt?: 1 | 2 | 3;
+
+  // ＝＝ 新增：實力差偏好設定（預設 ±2 內優先）＝＝
+  preferredLevelGap?: number; // 預設 2：對手總強度差 ≤ 2 視為理想
+  levelGapBonus?: number; // 預設 6：落在區間內給負分（加權偏好）
+  levelGapPenalty?: number; // 預設 12：超出區間後，二次方懲罰係數
+  levelAggregation?: "sum" | "avg"; // 預設 "sum"：隊伍強度用兩人level相加
+};
+
+/* =========================
+ *  Utils
+ * ========================= */
+function timeAt(date: string, h: number, m: number) {
+  const d = new Date(date);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+function addMinutes(d: Date, mins: number) {
+  const nd = new Date(d);
+  nd.setMinutes(nd.getMinutes() + mins);
+  return nd;
+}
+function formatTime(d: Date) {
+  return d.toTimeString().slice(0, 5);
+}
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+// 簡單的 seeded RNG（mulberry32）
+function mulberry32(seed: number) {
+  return function () {
+    let t = (seed += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
+/* =========================
+ *  混雙判定（含「強的女生可當男」）
+ * ========================= */
+function roleGender(p: Player, s: Settings): Gender {
+  const strongFlag = (s.strongFemaleAsMale ?? true) && (p.gender === "F") && ((p.level ?? 1) >= (s.strongLevelThreshold ?? 7));
+  return strongFlag ? "M" : p.gender;
+}
+function isMixedPair(a: Player, b: Player, s: Settings) {
+  return roleGender(a, s) !== roleGender(b, s);
+}
+
+/* =========================
+ *  generateSchedule（整合你喜歡的演算法 + 多場地/時段）
+ * ========================= */
+const sortPair = (a: string, b: string) => (a < b ? [a, b] : [b, a]);
+const key2 = (a: string, b: string) => sortPair(a, b).join("|");
+
+export function generateSchedule(
+  playersAll: Player[],
+  settings: Settings
+): { matches: MatchAssignment[]; usedShort: boolean } {
+  const players = playersAll.filter((p) => p.selected);
+  const courts = Math.max(1, settings.courts);
+
+  const maxMate = settings.maxSameTeammateTogether ?? 1;
+  const maxOpp = settings.maxSameOpponent ?? 2;
+  const maxConsec = settings.maxConsecutivePlays ?? 2;
+
+  const seedBase = (settings.reroll ?? 0) + players.length * 97 + courts * 131;
+  const rng = mulberry32(seedBase);
+
+  const start = timeAt(settings.dateISO, settings.startHH, settings.startMM);
+  const end = timeAt(settings.dateISO, settings.endHH, settings.endMM);
+  const needShort = players.length / courts > (settings.shortMatchThreshold ?? 7);
+  const slotLen = needShort ? settings.slotMinsShort : settings.slotMinsLong;
+
+  const slots: Array<{ idx: number; start: Date; end: Date }> = [];
+  let t = new Date(start);
+  let idx = 0;
+  while (addMinutes(t, slotLen) <= end) {
+    const s = new Date(t);
+    const e = addMinutes(t, slotLen);
+    slots.push({ idx, start: s, end: e });
+    t = e;
+    idx++;
+  }
+
+  const byId = new Map(players.map((p) => [p.id, p] as const));
+  const ids = players.map((p) => p.id);
+
+  const partnerCounts = new Map<string, number>();
+  const vsCounts = new Map<string, number>();
+  const playCounts = new Map<string, number>();
+  const offCounts = new Map<string, number>();
+  const consec = new Map<string, number>();
+  const lastPlayed = new Map<string, number>();
+  ids.forEach((id) => {
+    playCounts.set(id, 0);
+    offCounts.set(id, 0);
+    consec.set(id, 0);
+    lastPlayed.set(id, -99);
+  });
+
+  const W_BREAK_PARTNER = 50;
+  const W_BREAK_OPP = 50;
+  const W_CONSEC = 30;
+  const W_MIX_BONUS = -5;
+  const W_LOAD = 1;
+  const W_REF = 0.5;
+
+  const opponentsPairs = (t1: [string, string], t2: [string, string]) => {
+    const [a, b] = t1, [c, d] = t2;
+    return [key2(a, c), key2(a, d), key2(b, c), key2(b, d)];
+  };
+
+  function wouldExceedPartnerOrOpp(
+    t1: [string, string],
+    t2: [string, string],
+    maxMate: number,
+    maxOpp: number
+  ) {
+    const p1 = (partnerCounts.get(key2(...t1)) ?? 0) + 1;
+    const p2 = (partnerCounts.get(key2(...t2)) ?? 0) + 1;
+    if (p1 > maxMate || p2 > maxMate) return true;
+    for (const k of opponentsPairs(t1, t2)) {
+      const v = (vsCounts.get(k) ?? 0) + 1;
+      if (v > maxOpp) return true;
+    }
+    return false;
+  }
+
+  function costOf(
+    m: { team1: [string, string]; team2: [string, string]; ref: string; lj1: string; lj2: string; },
+    slotIndex: number
+  ) {
+    let score = 0;
+
+    const pk1 = key2(m.team1[0], m.team1[1]);
+    const pk2 = key2(m.team2[0], m.team2[1]);
+    const p1 = (partnerCounts.get(pk1) ?? 0) + 1;
+    const p2 = (partnerCounts.get(pk2) ?? 0) + 1;
+    if (p1 > maxMate) score += W_BREAK_PARTNER * (p1 - maxMate);
+    if (p2 > maxMate) score += W_BREAK_PARTNER * (p2 - maxMate);
+
+    for (const k of opponentsPairs(m.team1, m.team2)) {
+      const v = (vsCounts.get(k) ?? 0) + 1;
+      if (v > maxOpp) score += W_BREAK_OPP * (v - maxOpp);
+    }
+
+    for (const pid of [...m.team1, ...m.team2]) {
+      const lp = lastPlayed.get(pid)!;
+      const c = consec.get(pid)!;
+      if (slotIndex - lp === 1 && c + 1 > maxConsec) score += W_CONSEC * (c + 1 - maxConsec);
+    }
+
+    const t1a = byId.get(m.team1[0])!, t1b = byId.get(m.team1[1])!;
+    const t2a = byId.get(m.team2[0])!, t2b = byId.get(m.team2[1])!;
+    if (isMixedPair(t1a, t1b, settings)) score += W_MIX_BONUS;
+    if (isMixedPair(t2a, t2b, settings)) score += W_MIX_BONUS;
+
+    const playTmp = new Map(playCounts);
+    for (const pid of [...m.team1, ...m.team2]) playTmp.set(pid, playTmp.get(pid)! + 1);
+    const pVals = [...playTmp.values()];
+    if (pVals.length) score += W_LOAD * (Math.max(...pVals) - Math.min(...pVals));
+
+    const offTmp = new Map(offCounts);
+    for (const pid of [m.ref, m.lj1, m.lj2]) offTmp.set(pid, (offTmp.get(pid) ?? 0) + 1);
+    const oVals = [...offTmp.values()];
+    if (oVals.length) score += W_REF * (Math.max(...oVals) - Math.min(...oVals));
+
+    const lv = (id: string) => byId.get(id)!.level ?? 1;
+    const diff = Math.abs((lv(m.team1[0]) + lv(m.team1[1])) - (lv(m.team2[0]) + lv(m.team2[1])));
+    score += diff * 0.2;
+
+    score += (rng() - 0.5) * 0.01;
+    return score;
+  }
+
+  function commit(
+    m: { team1: [string, string]; team2: [string, string]; ref: string; lj1: string; lj2: string; },
+    slotIndex: number
+  ) {
+    const pk1 = key2(m.team1[0], m.team1[1]);
+    const pk2 = key2(m.team2[0], m.team2[1]);
+    partnerCounts.set(pk1, (partnerCounts.get(pk1) ?? 0) + 1);
+    partnerCounts.set(pk2, (partnerCounts.get(pk2) ?? 0) + 1);
+    for (const k of opponentsPairs(m.team1, m.team2)) vsCounts.set(k, (vsCounts.get(k) ?? 0) + 1);
+    for (const pid of [...m.team1, ...m.team2]) {
+      const lp = lastPlayed.get(pid)!;
+      if (slotIndex - lp === 1) consec.set(pid, consec.get(pid)! + 1);
+      else consec.set(pid, 1);
+      lastPlayed.set(pid, slotIndex);
+      playCounts.set(pid, playCounts.get(pid)! + 1);
+    }
+    for (const pid of [m.ref, m.lj1, m.lj2]) offCounts.set(pid, (offCounts.get(pid) ?? 0) + 1);
+  }
+
+  function playable(pid: string, slotIndex: number) {
+    const lp = lastPlayed.get(pid)!;
+    const c = consec.get(pid)!;
+    if (slotIndex - lp === 1 && c >= maxConsec) return false;
+    return true;
+  }
+
+  // N 可為 1/2/3；若 pool 不足，會允許同一人擔任兩個線審位置（只要不是球員）
+  function feasibleOfficials(pool: string[], N: number): [string, string, string][] {
+    const ranked = [...pool].sort((a, b) => (offCounts.get(a)! - offCounts.get(b)!));
+    const res: [string, string, string][] = [];
+    if (ranked.length === 0) return res;
+
+    const limit = Math.min(12, ranked.length);
+    for (let i = 0; i < limit; i++) {
+      if (N === 1) {
+        const r = ranked[i];
+        // 線審不足時允許重複（視覺上仍會有兩個位置，但代表缺線審）
+        const l1 = ranked[(i + 1) % limit] ?? r;
+        const l2 = ranked[(i + 2) % limit] ?? r;
+        res.push([r, l1, l2]);
+      } else if (N === 2) {
+        const r = ranked[i];
+        if (i + 1 >= limit) {
+          // 不足時用 r 重複補位
+          res.push([r, r, r]);
+        } else {
+          const l1 = ranked[i + 1];
+          const l2 = ranked[(i + 2) % limit] ?? l1;
+          res.push([r, l1, l2]);
+        }
+      } else {
+        if (i + 2 >= limit) break;
+        res.push([ranked[i], ranked[i + 1], ranked[i + 2]]);
+      }
+      if (res.length >= 6) break;
+    }
+    return res;
+  }
+
+  function candidateTeams(four: string[]): [[string, string], [string, string]][] {
+    const [a, b, c, d] = four;
+    const pairings: [[string, string], [string, string]][] = [
+      [[a, b], [c, d]],
+      [[a, c], [b, d]],
+      [[a, d], [b, c]],
+    ];
+    const scorePair = (t1: [string, string], t2: [string, string]) => {
+      let s = 0;
+      const A1 = byId.get(t1[0])!, A2 = byId.get(t1[1])!, B1 = byId.get(t2[0])!, B2 = byId.get(t2[1])!;
+      if (isMixedPair(A1, A2, settings)) s -= 2;
+      if (isMixedPair(B1, B2, settings)) s -= 2;
+      s += (partnerCounts.get(key2(...t1)) ?? 0);
+      s += (partnerCounts.get(key2(...t2)) ?? 0);
+      for (const k of opponentsPairs(t1, t2)) s += (vsCounts.get(k) ?? 0);
+      return s;
+    };
+    return pairings.sort((p, q) => {
+      const diff = scorePair(...p) - scorePair(...q);
+      return diff !== 0 ? diff : rng() - 0.5;
+    });
+  }
+
+  function teamStrength(ids: [string, string], byId: Map<string, Player>, mode: "sum" | "avg") {
+    const a = byId.get(ids[0])!, b = byId.get(ids[1])!;
+    const la = a.level ?? 1, lb = b.level ?? 1;
+    return mode === "avg" ? (la + lb) / 2 : (la + lb);
+  }
+
+
+  // 主函式：取下一個可放入此場地的候選（考慮「不能讓裁判下場打球」）
+  function nextCourtCandidates(
+    slotIndex: number,
+    usedPlayersThisSlot: Set<string>,
+    usedOfficialsThisSlot: Set<string>
+  ) {
+    // 球員候選：不可為本時段球員，也不可為本時段任何場的裁判；且要符合連打限制
+    let pool = ids.filter(
+      (pid) =>
+        playable(pid, slotIndex) &&
+        !usedPlayersThisSlot.has(pid) &&
+        !usedOfficialsThisSlot.has(pid)
+    );
+    if (pool.length < 4) {
+      // 不足四人 → 放寬連打，但仍不能和「本時段球員/裁判」重疊
+      pool = ids.filter(
+        (pid) => !usedPlayersThisSlot.has(pid) && !usedOfficialsThisSlot.has(pid)
+      );
+    }
+
+    // 依打球次數、連打數排序，前段做部分洗牌
+    pool.sort(
+      (a, b) =>
+        (playCounts.get(a)! - playCounts.get(b)!) ||
+        (consec.get(a)! - consec.get(b)!)
+    );
+    if (pool.length > 1) {
+      const top = Math.min(8, pool.length);
+      for (let i = top - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      pool = pool.slice(0, top);
+    }
+
+    // 產生四人組合
+    const combs: string[][] = [];
+    for (let i = 0; i < pool.length; i++)
+      for (let j = i + 1; j < pool.length; j++)
+        for (let k = j + 1; k < pool.length; k++)
+          for (let l = k + 1; l < pool.length; l++)
+            combs.push([pool[i], pool[j], pool[k], pool[l]]);
+
+    type Cand = { team1: [string, string]; team2: [string, string]; ref: string; lj1: string; lj2: string; };
+    const strict: Cand[] = [];
+    const soft: Cand[] = [];
+
+    // 依設定決定是否允許同一時段跨場重複執法
+    const allowReuseOfficials = !!settings.shareOfficialsAcrossCourts;
+    const desiredN = settings.officialsPerCourt ?? 3;
+
+    for (const four of combs) {
+      for (const [t1, t2] of candidateTeams(four)) {
+        const playing = new Set([...t1, ...t2]);
+
+        const mode = settings.levelAggregation ?? "sum";
+        const pref = settings.preferredLevelGap ?? 2;
+
+        const s1 = teamStrength(t1, byId, mode);
+        const s2 = teamStrength(t2, byId, mode);
+        const diff = Math.abs(s1 - s2);
+
+        // rest：可以擔任執法的人
+        // - 永遠排除：本場上場的四人 + 本時段已上場的球員（避免裁判同時在場上）
+        // - 若不允許跨場共享執法，另外排除：本時段已是裁判的人
+        const rest = ids.filter((x) => {
+          if (playing.has(x)) return false;
+          if (usedPlayersThisSlot.has(x)) return false; // 不能是別場球員
+          if (!allowReuseOfficials && usedOfficialsThisSlot.has(x)) return false; // 規避跨場重複執法
+          return true;
+        });
+
+        // 先把「同伴/對手不超限」與「落在 ±pref」的，塞進 strict；否則先記到 soft
+        const within = diff <= pref;
+        const hardOK = !wouldExceedPartnerOrOpp(t1, t2, maxMate, maxOpp);
+
+        // 自動降級：N=desiredN → 2 → 1（缺線審時仍可排）
+        let gotAny = false;
+        for (let N = desiredN; N >= 1 && !gotAny; N--) {
+          const fo = feasibleOfficials(rest, N);
+          for (const [r, l1, l2] of fo) {
+            const item: Cand = { team1: t1, team2: t2, ref: r, lj1: l1, lj2: l2 };
+
+            if (hardOK && within) {
+              strict.push(item);
+            } else {
+              soft.push(item);
+            }
+            gotAny = true;
+          }
+        }
+      }
+    }
+
+    const candidatePool = strict.length ? strict : soft;
+    return candidatePool.sort((a, b) => {
+      const diff = costOf(a, slotIndex) - costOf(b, slotIndex);
+      return diff !== 0 ? diff : rng() - 0.5;
+    });
+  }
+
+  const matches: MatchAssignment[] = [];
+
+  for (const slot of slots) {
+    const usedPlayersThisSlot = new Set<string>();
+    const usedOfficialsThisSlot = new Set<string>();
+
+    for (let court = 1; court <= courts; court++) {
+      const cands = nextCourtCandidates(slot.idx, usedPlayersThisSlot, usedOfficialsThisSlot);
+      if (!cands.length) break;
+
+      const m = cands[0];
+      commit(m, slot.idx);
+
+      // 佔位：球員一定加入 usedPlayers；裁判一定加入 usedOfficials
+      for (const pid of [...m.team1, ...m.team2]) usedPlayersThisSlot.add(pid);
+      for (const pid of [m.ref, m.lj1, m.lj2]) usedOfficialsThisSlot.add(pid);
+
+      // 組裝輸出
+      const teamA: [Player, Player] = [byId.get(m.team1[0])!, byId.get(m.team1[1])!];
+      const teamB: [Player, Player] = [byId.get(m.team2[0])!, byId.get(m.team2[1])!];
+
+      matches.push({
+        court,
+        slotIndex: slot.idx,
+        start: slot.start,
+        end: slot.end,
+        teams: [teamA, teamB],
+        officials: {
+          umpire: byId.get(m.ref)!,
+          line1: byId.get(m.lj1)!,
+          line2: byId.get(m.lj2)!,
+        },
+      });
+    }
+  }
+
+  return { matches, usedShort: needShort };
+}
+
+/* =========================
+ *  UI：Level 元件
+ * ========================= */
+function InfoPopover({ level }: { level?: Level }) {
+  const lv = (level ?? 1) as Level; // fallback
+  const info = LEVEL_INFO[lv];
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <button type="button" aria-haspopup="dialog" aria-expanded={open}
+        aria-label={`查看 ${levelLabel(lv)} 說明`} onClick={() => setOpen(o => !o)} onBlur={() => setOpen(false)}
+        className={`ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border text-sky-600 border-sky-300 hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-300 ${open ? "bg-sky-50" : ""}`}
+        title={`${levelLabel(lv)}｜${info.title}`}
+      >
+        <InformationCircleIcon className="h-4 w-4" />
+      </button>
+      {open && (
+        <div role="dialog" className="absolute z-30 left-1/2 -translate-x-1/2 mt-2 w-72 rounded-xl border bg-white p-3 shadow">
+          <div className="text-sm font-medium">{levelLabel(lv)}｜{info.title}</div>
+          <div className="mt-1 text-xs text-slate-600 leading-relaxed">{info.desc}</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function LevelPills({ value, onChange, disabled }: { value?: Level; onChange: (lv: Level) => void; disabled?: boolean }) {
-const v = (value ?? 1) as Level; // fallback
-return (
-<div className="flex items-center gap-2">
-<div role="radiogroup" aria-label="Select player level" className="flex flex-wrap gap-1.5">
-{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => {
-const active = v === n; const { color } = levelBand(n as Level);
-return (
-<button key={n} role="radio" aria-checked={active} onClick={() => !disabled && onChange(n as Level)} disabled={disabled}
-className="px-2.5 py-1 rounded-full border text-xs"
-style={{ background: active ? `${color}14` : "white", borderColor: active ? `${color}55` : "#e5e7eb", color: active ? color : "#111827" }}
-title={`${levelLabel(n as Level)}｜${LEVEL_INFO[n as Level].title}`}
->{levelLabel(n as Level)}</button>
-);
-})}
-</div>
-<InfoPopover level={v} />
-</div>
-);
+  const v = (value ?? 1) as Level; // fallback
+  return (
+    <div className="flex items-center gap-2">
+      <div role="radiogroup" aria-label="Select player level" className="flex flex-wrap gap-1.5">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => {
+          const active = v === n; const { color } = levelBand(n as Level);
+          return (
+            <button key={n} role="radio" aria-checked={active} onClick={() => !disabled && onChange(n as Level)} disabled={disabled}
+              className="px-2.5 py-1 rounded-full border text-xs"
+              style={{ background: active ? `${color}14` : "white", borderColor: active ? `${color}55` : "#e5e7eb", color: active ? color : "#111827" }}
+              title={`${levelLabel(n as Level)}｜${LEVEL_INFO[n as Level].title}`}
+            >{levelLabel(n as Level)}</button>
+          );
+        })}
+      </div>
+      <InfoPopover level={v} />
+    </div>
+  );
 }
 
 /* =========================
@@ -49,10 +538,10 @@ title={`${levelLabel(n as Level)}｜${LEVEL_INFO[n as Level].title}`}
 export default function SchedulePage() {
   const [players, setPlayers] = useState<Player[]>(() => samplePlayers());
   const [settings, setSettings] = useState<Settings>(() => ({
-    courts: 2,
+    courts: 1,
     slotMinsLong: 12,
     slotMinsShort: 8,
-    shortMatchThreshold: 7,
+    shortMatchThreshold: 8,
     preferMixed: true,
     dateISO: new Date().toISOString().slice(0, 10),
     startHH: 10,
@@ -67,6 +556,7 @@ export default function SchedulePage() {
     reroll: 0,
     shareOfficialsAcrossCourts: false,
     officialsPerCourt: 2, // 每場需要 2 位執法官
+
   }));
 
   // 手動模式（可拖拉交換球員）
